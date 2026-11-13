@@ -18,6 +18,7 @@
   },
   "dependencies": {
     "dxf-parser": "^1.1.2",
+    "fast-xml-parser": "^5.12.1",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
     "zustand": "^5.1.0"

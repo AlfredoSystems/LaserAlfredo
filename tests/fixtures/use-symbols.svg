@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="100mm" height="100mm" viewBox="0 0 100 100">
+  <defs>
+    <symbol id="tile" viewBox="0 0 10 10">
+      <rect width="10" height="10" fill="none" stroke="#ff0000"/>
+    </symbol>
+    <rect id="slot" width="5" height="2" fill="none" stroke="#0000ff"/>
+    <clipPath id="clip"><rect width="1" height="1"/></clipPath>
+  </defs>
+  <symbol id="unused"><circle r="3"/></symbol>
+  <use href="#tile" x="20" y="20" width="20" height="20"/>
+  <use xlink:href="#slot" x="50" y="0"/>
+  <use xlink:href="#slot" transform="translate(50,10) scale(2)"/>
+</svg>
