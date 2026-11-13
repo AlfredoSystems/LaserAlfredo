@@ -52,6 +52,7 @@ export function defaultLayer(color: string): Layer {
     maxPowerPct: 30,
     minPowerPct: 20,
     passes: 1,
+    kerfMm: 0,
     enabled: true,
   };
 }
@@ -136,6 +137,7 @@ export function updateLayer(doc: LaserDocument, color: string, patch: LayerPatch
       maxPowerPct,
       minPowerPct: Math.min(maxPowerPct, clamp(merged.minPowerPct, 0, 100, layer.minPowerPct)),
       passes: Math.round(clamp(merged.passes, 1, 100, layer.passes)),
+      kerfMm: clamp(merged.kerfMm, 0, 2, layer.kerfMm),
     };
   });
   return { shapes: doc.shapes, layers };

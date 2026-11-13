@@ -87,6 +87,16 @@ export function LayersPanel() {
                 decimals={1}
                 onCommit={(minPowerPct) => patchLayer(layer.color, { minPowerPct })}
               />
+              <NumberField
+                label="Kerf"
+                title="Width of the laser cut in mm. Outlines grow and holes shrink by half of it. 0 = off."
+                testId="layer-kerf"
+                value={layer.kerfMm}
+                min={0}
+                max={2}
+                decimals={3}
+                onCommit={(kerfMm) => patchLayer(layer.color, { kerfMm })}
+              />
             </div>
           </li>
         ))}

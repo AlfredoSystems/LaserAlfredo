@@ -180,3 +180,36 @@ test('zooms with the wheel', async ({ page }) => {
   await page.mouse.wheel(0, -400);
   await expect(page.locator('.status-mono').nth(1)).not.toHaveText(before);
 });
+
+test('shows a job estimate, previews and exports an .rd file', async ({ page }) => {
+  await importSample(page, 'sample.dxf', sampleDxf());
+  await expect(page.getByTestId('job-stats')).toBeVisible();
+  // 300 mm rectangle + a 10 mm radius circle.
+  await expect(page.getByTestId('job-cut')).toHaveText(/^36[23] mm$/);
+  await expect(page.getByTestId('job-time')).toContainText('s');
+
+  await page.getByTestId('preview-toggle').click();
+  await expect(page.getByTestId('preview-slider')).toBeVisible();
+  await page.getByTestId('preview-slider').fill('400');
+  await page.getByTestId('preview-toggle').click();
+  await expect(page.getByTestId('preview-slider')).toHaveCount(0);
+
+  await page.getByTestId('job-name').fill('my test/part');
+  const [download] = await Promise.all([page.waitForEvent('download'), page.getByTestId('export-rd').click()]);
+  expect(download.suggestedFilename()).toBe('my_test_part.rd');
+  const stream = await download.createReadStream();
+  let size = 0;
+  for await (const chunk of stream) size += (chunk as Buffer).length;
+  expect(size).toBeGreaterThan(50);
+  await expect(page.getByTestId('notice')).toContainText('Exported my_test_part.rd');
+});
+
+test('refuses to export a job that leaves the bed', async ({ page }) => {
+  await importSample(page, 'sample.dxf', sampleDxf());
+  await expect(page.getByTestId('export-rd')).toBeEnabled();
+  const x = page.getByTestId('sel-x');
+  await x.fill('950');
+  await x.press('Enter');
+  await expect(page.getByTestId('job-problem')).toContainText('outside');
+  await expect(page.getByTestId('export-rd')).toBeDisabled();
+});

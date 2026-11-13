@@ -143,13 +143,14 @@ button.primary:hover:not(:disabled) {
 .panel {
   padding: 0.6rem 0.7rem;
   border-bottom: 1px solid var(--border);
+  flex: none;
   display: flex;
   flex-direction: column;
   gap: 0.45rem;
 }
 
 .panel-grow {
-  flex: 1;
+  flex: 1 1 0;
   min-height: 0;
   overflow-y: auto;
 }
@@ -278,6 +279,51 @@ button.primary:hover:not(:disabled) {
   margin-left: auto;
   color: var(--muted);
   white-space: nowrap;
+}
+
+.stats {
+  margin: 0;
+  display: grid;
+  grid-template-columns: auto 1fr auto 1fr;
+  gap: 0.2rem 0.5rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.stats dt {
+  color: var(--muted);
+}
+
+.stats dd {
+  margin: 0;
+}
+
+.panel-error,
+.panel-warning {
+  margin: 0;
+  line-height: 1.35;
+}
+
+.panel-error {
+  color: var(--error);
+}
+
+.panel-warning {
+  color: #e3b341;
+}
+
+.field-select {
+  flex: 1;
+  min-width: 0;
+}
+
+.field-text {
+  text-align: left;
+}
+
+input[type='range'] {
+  width: 100%;
+  margin: 0;
+  accent-color: var(--accent);
 }
 
 .status {

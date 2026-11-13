@@ -17,6 +17,8 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "clipper2-ts": "2.0.1-19",
+    "comlink": "^4.4.2",
     "dxf-parser": "^1.1.2",
     "fast-xml-parser": "^5.12.1",
     "react": "^19.3.1",
