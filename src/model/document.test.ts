@@ -3,6 +3,7 @@ import {
   addShapes,
   defaultLayer,
   EMPTY_DOCUMENT,
+  nearestPaletteColor,
   normalizeColor,
   removeShapes,
   setShapesColor,
@@ -38,6 +39,16 @@ describe('normalizeColor', () => {
   it('falls back to black', () => {
     expect(normalizeColor('red')).toBe('#000000');
     expect(normalizeColor('')).toBe('#000000');
+  });
+});
+
+describe('nearestPaletteColor', () => {
+  it('collapses near-blacks and keeps distinct colours apart', () => {
+    expect(nearestPaletteColor('#010101')).toBe('#000000');
+    expect(nearestPaletteColor('#1a1a1a')).toBe('#000000');
+    expect(nearestPaletteColor('#fe0000')).toBe('#ff0000');
+    expect(nearestPaletteColor('#00ff00')).toBe('#00a000');
+    expect(nearestPaletteColor('#0000ff')).toBe('#0000ff');
   });
 });
 

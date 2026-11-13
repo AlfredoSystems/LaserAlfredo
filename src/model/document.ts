@@ -26,6 +26,23 @@ export function normalizeColor(color: string): string {
   return '#000000';
 }
 
+/** The palette colour closest (in RGB) to the given colour. */
+export function nearestPaletteColor(color: string): string {
+  const rgb = (c: string) => [1, 3, 5].map((i) => parseInt(c.slice(i, i + 2), 16));
+  const [r, g, b] = rgb(normalizeColor(color));
+  let best = LAYER_PALETTE[0] ?? '#000000';
+  let bestDistance = Infinity;
+  for (const candidate of LAYER_PALETTE) {
+    const [cr, cg, cb] = rgb(candidate);
+    const distance = ((r ?? 0) - (cr ?? 0)) ** 2 + ((g ?? 0) - (cg ?? 0)) ** 2 + ((b ?? 0) - (cb ?? 0)) ** 2;
+    if (distance < bestDistance) {
+      best = candidate;
+      bestDistance = distance;
+    }
+  }
+  return best;
+}
+
 /** Conservative defaults: a new layer never starts at high power. */
 export function defaultLayer(color: string): Layer {
   return {

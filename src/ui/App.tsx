@@ -26,7 +26,8 @@ function Toolbar() {
   const hasSelection = useAppStore((state) => state.selection.size > 0);
   const hasShapes = useAppStore((state) => state.doc.shapes.length > 0);
   const joinToleranceMm = useAppStore((state) => state.joinToleranceMm);
-  const { undo, redo, deleteSelection, requestFit, setJoinTolerance } = useAppStore.getState();
+  const keepFileColors = useAppStore((state) => state.keepFileColors);
+  const { undo, redo, deleteSelection, requestFit, setJoinTolerance, setKeepFileColors } = useAppStore.getState();
 
   return (
     <div className="toolbar">
@@ -77,6 +78,18 @@ function Toolbar() {
         decimals={3}
         onCommit={setJoinTolerance}
       />
+      <label
+        className="check"
+        title="Off: everything imports onto the active layer. On: one layer per colour in the file (snapped to the palette)."
+      >
+        <input
+          type="checkbox"
+          checked={keepFileColors}
+          data-testid="keep-colors"
+          onChange={(event) => setKeepFileColors(event.target.checked)}
+        />
+        Keep file colours
+      </label>
     </div>
   );
 }

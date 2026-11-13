@@ -5,6 +5,8 @@ import { HL1060_BED } from '../model/bed';
 import {
   addShapes,
   EMPTY_DOCUMENT,
+  nearestPaletteColor,
+  normalizeColor,
   removeShapes,
   setShapesColor,
   shapesFromPaths,
@@ -36,6 +38,10 @@ export interface AppState {
   readonly past: readonly LaserDocument[];
   readonly future: readonly LaserDocument[];
   readonly joinToleranceMm: number;
+  /** Layer colour that imports land on, unless `keepFileColors` is set. */
+  readonly activeColor: string;
+  /** Keep the file's colours (snapped to the palette) instead of using the active layer. */
+  readonly keepFileColors: boolean;
   readonly cursor: Point | null;
   readonly zoom: number;
   readonly notice: Notice | null;
@@ -56,6 +62,8 @@ export interface AppState {
   undo(): void;
   redo(): void;
   setJoinTolerance(mm: number): void;
+  setActiveColor(color: string): void;
+  setKeepFileColors(keep: boolean): void;
   setCursor(p: Point | null): void;
   setZoom(scale: number): void;
   setNotice(notice: Notice | null): void;
@@ -93,6 +101,8 @@ export const useAppStore = create<AppState>((set, get) => {
     past: [],
     future: [],
     joinToleranceMm: 0.01,
+    activeColor: '#000000',
+    keepFileColors: false,
     cursor: null,
     zoom: 1,
     notice: null,
@@ -102,7 +112,12 @@ export const useAppStore = create<AppState>((set, get) => {
     importText(fileName, text) {
       try {
         const result = importFile(fileName, text, { joinToleranceMm: get().joinToleranceMm });
-        let shapes = shapesFromPaths(result.paths, nextId);
+        const { activeColor, keepFileColors } = get();
+        const paths = result.paths.map((path) => ({
+          ...path,
+          color: keepFileColors ? nearestPaletteColor(path.color) : activeColor,
+        }));
+        let shapes = shapesFromPaths(paths, nextId);
         if (shapes.length === 0) {
           const detail = result.warnings.length > 0 ? ` (${result.warnings.join('; ')})` : '';
           set({ notice: { kind: 'error', text: `${fileName}: nothing to import${detail}` } });
@@ -150,7 +165,7 @@ export const useAppStore = create<AppState>((set, get) => {
       const ids = get()
         .doc.shapes.filter((shape) => shape.color === color)
         .map((shape) => shape.id);
-      set({ selection: new Set(ids) });
+      set({ selection: new Set(ids), activeColor: color });
     },
     clearSelection() {
       if (get().selection.size > 0) set({ selection: EMPTY_SELECTION });
@@ -198,6 +213,14 @@ export const useAppStore = create<AppState>((set, get) => {
 
     setJoinTolerance(mm) {
       if (Number.isFinite(mm) && mm >= 0 && mm <= 10) set({ joinToleranceMm: mm });
+    },
+    setActiveColor(color) {
+      const { doc, selection } = get();
+      const activeColor = normalizeColor(color);
+      commit(setShapesColor(doc, selection, activeColor), { activeColor });
+    },
+    setKeepFileColors(keep) {
+      set({ keepFileColors: keep });
     },
     setCursor(p) {
       set({ cursor: p });

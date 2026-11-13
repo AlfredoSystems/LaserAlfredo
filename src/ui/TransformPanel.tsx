@@ -10,7 +10,8 @@ export function TransformPanel() {
   const doc = useAppStore((state) => state.doc);
   const selection = useAppStore((state) => state.selection);
   const transformSelection = useAppStore((state) => state.transformSelection);
-  const setSelectionColor = useAppStore((state) => state.setSelectionColor);
+  const activeColor = useAppStore((state) => state.activeColor);
+  const setActiveColor = useAppStore((state) => state.setActiveColor);
   const [lockAspect, setLockAspect] = useState(true);
   const [angle, setAngle] = useState(90);
 
@@ -113,17 +114,18 @@ export function TransformPanel() {
           Flip V
         </button>
       </div>
-      <div className="palette" aria-label="Move selection to layer">
+      <div className="palette" aria-label="Active layer">
         {LAYER_PALETTE.map((color) => (
           <button
             key={color}
             type="button"
-            className="swatch"
+            className={`swatch ${color === activeColor ? 'swatch-active' : ''}`}
             style={{ background: color }}
-            disabled={disabled}
-            title={`Move selection to layer ${color}`}
-            aria-label={`Move selection to layer ${color}`}
-            onClick={() => setSelectionColor(color)}
+            title="Make this the active layer (imports land here) and move the selection to it"
+            aria-label={`Active layer ${color}`}
+            aria-pressed={color === activeColor}
+            data-testid={`palette-${color.slice(1)}`}
+            onClick={() => setActiveColor(color)}
           />
         ))}
       </div>

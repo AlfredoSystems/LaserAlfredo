@@ -63,6 +63,7 @@ test('app loads and shows the bed size', async ({ page }) => {
 });
 
 test('imports a DXF, joins lines and creates layers by colour', async ({ page }) => {
+  await page.getByTestId('keep-colors').check();
   await importSample(page, 'sample.dxf', sampleDxf());
   await expect(page.getByTestId('shape-count')).toHaveText('2 shapes');
   await expect(page.getByTestId('notice')).toContainText('2 shapes (2 closed)');
@@ -71,6 +72,22 @@ test('imports a DXF, joins lines and creates layers by colour', async ({ page })
   await expect(page.getByTestId('sel-x')).toHaveValue('0');
   await expect(page.getByTestId('sel-w')).toHaveValue('100');
   await expect(page.getByTestId('sel-h')).toHaveValue('50');
+});
+
+test('imports onto the active layer by default', async ({ page }) => {
+  await importSample(page, 'sample.dxf', sampleDxf());
+  await expect(page.getByTestId('shape-count')).toHaveText('2 shapes');
+  await expect(page.getByTestId('layer-row')).toHaveCount(1);
+
+  // Pick red as the active layer with nothing selected: the next import lands there.
+  await page.keyboard.press('Escape');
+  await page.getByTestId('palette-ff0000').click();
+  await importSample(page, 'sample.svg', SAMPLE_SVG);
+  await expect(page.getByTestId('layer-row')).toHaveCount(2);
+
+  // With a selection, the palette moves it to that layer.
+  await page.getByTestId('palette-000000').click();
+  await expect(page.getByTestId('layer-row')).toHaveCount(1);
 });
 
 test('imports an SVG in millimetres', async ({ page }) => {
