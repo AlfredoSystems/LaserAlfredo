@@ -1,0 +1,44 @@
+:root {
+  color-scheme: dark;
+  font-family: system-ui, sans-serif;
+  background: #16181c;
+  color: #e6e8eb;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.app-header {
+  display: flex;
+  align-items: baseline;
+  gap: 1rem;
+  padding: 0.5rem 1rem;
+  border-bottom: 1px solid #2a2e35;
+}
+
+.app-header h1 {
+  margin: 0;
+  font-size: 1.1rem;
+}
+
+.app-bed {
+  color: #9aa3ad;
+  font-size: 0.85rem;
+}
+
+.app-main {
+  flex: 1;
+  display: grid;
+  place-items: center;
+  color: #9aa3ad;
+}
