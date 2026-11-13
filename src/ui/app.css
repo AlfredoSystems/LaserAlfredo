@@ -1,8 +1,16 @@
 :root {
   color-scheme: dark;
   font-family: system-ui, sans-serif;
+  font-size: 13px;
   background: #16181c;
   color: #e6e8eb;
+  --border: #2a2e35;
+  --panel: #1b1e23;
+  --control: #262a31;
+  --control-hover: #30353d;
+  --muted: #9aa3ad;
+  --accent: #2f7de1;
+  --error: #ff7b72;
 }
 
 html,
@@ -10,6 +18,7 @@ body,
 #root {
   height: 100%;
   margin: 0;
+  overflow: hidden;
 }
 
 .app {
@@ -18,12 +27,18 @@ body,
   height: 100%;
 }
 
+.app-dropping {
+  outline: 3px dashed var(--accent);
+  outline-offset: -6px;
+}
+
 .app-header {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: 1rem;
-  padding: 0.5rem 1rem;
-  border-bottom: 1px solid #2a2e35;
+  padding: 0.4rem 0.8rem;
+  border-bottom: 1px solid var(--border);
+  flex-wrap: wrap;
 }
 
 .app-header h1 {
@@ -32,13 +47,262 @@ body,
 }
 
 .app-bed {
-  color: #9aa3ad;
-  font-size: 0.85rem;
+  color: var(--muted);
+  white-space: nowrap;
 }
 
-.app-main {
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+}
+
+.toolbar-gap {
+  width: 0.6rem;
+}
+
+.toolbar .field {
+  width: 9.5rem;
+}
+
+button,
+select,
+input[type='text'] {
+  font: inherit;
+  color: inherit;
+  background: var(--control);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0.25rem 0.55rem;
+}
+
+button {
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+button:hover:not(:disabled) {
+  background: var(--control-hover);
+}
+
+button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+button.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+button.primary:hover:not(:disabled) {
+  background: #4a90ea;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.app-body {
   flex: 1;
+  display: flex;
+  min-height: 0;
+}
+
+.workspace {
+  flex: 1;
+  min-width: 0;
+  position: relative;
+  overflow: hidden;
+  background: #23262b;
+}
+
+.workspace-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  touch-action: none;
+  outline: none;
+}
+
+.sidebar {
+  width: 270px;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  border-left: 1px solid var(--border);
+  background: var(--panel);
+  min-height: 0;
+}
+
+.panel {
+  padding: 0.6rem 0.7rem;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.panel-grow {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.panel-title {
+  margin: 0;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+  display: flex;
+  justify-content: space-between;
+}
+
+.panel-count {
+  font-variant-numeric: tabular-nums;
+}
+
+.panel-empty {
+  margin: 0;
+  color: var(--muted);
+}
+
+.field-grid {
   display: grid;
-  place-items: center;
-  color: #9aa3ad;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.35rem;
+}
+
+.field {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+.field-label {
+  color: var(--muted);
+  white-space: nowrap;
+  min-width: 1.1rem;
+}
+
+.field-input {
+  flex: 1;
+  min-width: 0;
+  width: 100%;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.field-input:disabled {
+  opacity: 0.45;
+}
+
+.row {
+  display: flex;
+  gap: 0.35rem;
+  align-items: center;
+}
+
+.row > button {
+  flex: 1;
+}
+
+.row > .field {
+  flex: 2;
+}
+
+.check {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  color: var(--muted);
+}
+
+.palette {
+  display: flex;
+  gap: 0.3rem;
+  flex-wrap: wrap;
+}
+
+.swatch {
+  width: 1.35rem;
+  height: 1.35rem;
+  padding: 0;
+  flex: none;
+  border: 1px solid #5b626d;
+  border-radius: 3px;
+}
+
+.swatch-active {
+  outline: 2px solid #fff;
+  outline-offset: 1px;
+}
+
+.layers {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.layer {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 0.45rem;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: #1f2228;
+}
+
+.layer-head {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.layer-head input[type='checkbox'] {
+  margin: 0;
+}
+
+.layer-count {
+  margin-left: auto;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.status {
+  display: flex;
+  gap: 1.2rem;
+  padding: 0.25rem 0.8rem;
+  border-top: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 0.92em;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.status-mono {
+  font-variant-numeric: tabular-nums;
+  min-width: 9.5rem;
+}
+
+.status-notice {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1;
+  text-align: right;
+}
+
+.status-error {
+  color: var(--error);
 }
