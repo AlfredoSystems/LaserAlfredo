@@ -136,6 +136,12 @@ describe('updateLayer', () => {
     expect(doc.layers[0]?.minPowerPct).toBe(40);
   });
 
+  it('clamps kerf to 0–2 mm', () => {
+    expect(updateLayer(base, '#ff0000', { kerfMm: 0.15 }).layers[0]?.kerfMm).toBe(0.15);
+    expect(updateLayer(base, '#ff0000', { kerfMm: -1 }).layers[0]?.kerfMm).toBe(0);
+    expect(updateLayer(base, '#ff0000', { kerfMm: 50 }).layers[0]?.kerfMm).toBe(2);
+  });
+
   it('rejects non-finite values and keeps passes a positive integer', () => {
     let doc = updateLayer(base, '#ff0000', { speedMmS: Number.NaN, passes: 2.6 });
     expect(doc.layers[0]?.speedMmS).toBe(20);

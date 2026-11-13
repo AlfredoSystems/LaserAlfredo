@@ -6,7 +6,7 @@ Browser-based laser control software for a HL1060 CO2 laser (1000 × 600 mm bed)
 **Stage:** greenfield. Build in the milestone order under Roadmap. Don't build ahead.
 
 ## Hardware assumptions (verify before writing driver code)
-- Controller: **Ruida** (assumed; most 1060s ship with an RDC644x/6445). Check the actual model on the controller panel and put it here: `[RDC____]`.
+- Controller: **Ruida** (assumed; most 1060s ship with an RDC644x/6445). Confirmed from the controller panel: **RDC6442 (G or S)**.
 - Connection: **USB** (confirmed). Not Ethernet, so nothing in this project uses UDP. The controller is expected to appear on the PC as a virtual COM port (serial over USB).
 - Fallback: export a `.rd` file and run it from a USB stick or the controller's file upload. This needs no live connection and should be supported from day one.
 - Ruida protocol: commands are byte-scrambled (swizzle with the model's magic byte, 0x88 on 644x). Treat open-source Ruida implementations (e.g. MeerK40t's Ruida driver) as references only. Don't copy GPL code into this repo.

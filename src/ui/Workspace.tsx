@@ -12,6 +12,7 @@ import { IDENTITY, translation, type Matrix } from '../model/transform';
 import type { Bounds, Point } from '../model/types';
 import { fitBounds, panBy, toDocument, toScreen, zoomAt, type View } from '../model/view';
 import { HANDLE_SIZE_PX, renderScene, rotateHandleScreen } from './scene/render';
+import { useJobStore } from './jobStore';
 import { BED_BOUNDS, useAppStore } from './store';
 
 const PICK_TOLERANCE_PX = 6;
@@ -56,6 +57,7 @@ export function Workspace() {
     const draw = () => {
       frame = 0;
       const { doc, selection } = useAppStore.getState();
+      const job = useJobStore.getState();
       renderScene(ctx, {
         doc,
         selection,
@@ -67,6 +69,10 @@ export function Workspace() {
         dpr: window.devicePixelRatio || 1,
         preview,
         marquee: drag?.kind === 'marquee' && drag.active ? { a: drag.start, b: drag.current } : null,
+        jobPreview:
+          job.preview && job.built
+            ? { segments: job.segments, colors: job.built.job.layers.map((layer) => layer.color), fraction: job.fraction }
+            : null,
       });
     };
     const requestDraw = () => {
@@ -117,7 +123,7 @@ export function Workspace() {
     };
 
     const cursorFor = (screen: Point): string => {
-      if (spaceDown) return 'grab';
+      if (spaceDown || useJobStore.getState().preview) return 'grab';
       const handle = handleAt(screen);
       if (handle === 'rotate') return 'crosshair';
       if (handle === 'n' || handle === 's') return 'ns-resize';
@@ -134,7 +140,9 @@ export function Workspace() {
       const point = toDocument(view, screen);
       const store = useAppStore.getState();
 
-      if (event.button === 1 || event.button === 2 || (event.button === 0 && spaceDown)) {
+      // The preview is read-only: every drag pans.
+      const panOnly = useJobStore.getState().preview;
+      if (event.button === 1 || event.button === 2 || (event.button === 0 && (spaceDown || panOnly))) {
         drag = { kind: 'pan', last: screen };
       } else if (event.button === 0) {
         const handle = handleAt(screen);
@@ -278,6 +286,8 @@ export function Workspace() {
       if (key === ' ') {
         spaceDown = true;
         event.preventDefault();
+      } else if (useJobStore.getState().preview) {
+        if (key === 'escape') useJobStore.getState().setPreview(false);
       } else if (key === 'escape') {
         if (drag) finishDrag(false);
         else store.clearSelection();
@@ -322,6 +332,16 @@ export function Workspace() {
       if (state.doc !== previous.doc || state.selection !== previous.selection) requestDraw();
     });
 
+    const unsubscribeJob = useJobStore.subscribe((state, previous) => {
+      if (
+        state.preview !== previous.preview ||
+        state.fraction !== previous.fraction ||
+        state.segments !== previous.segments
+      ) {
+        requestDraw();
+      }
+    });
+
     canvas.addEventListener('pointerdown', onPointerDown);
     canvas.addEventListener('pointermove', onPointerMove);
     canvas.addEventListener('pointerup', onPointerUp);
@@ -336,6 +356,7 @@ export function Workspace() {
     return () => {
       observer.disconnect();
       unsubscribe();
+      unsubscribeJob();
       if (frame !== 0) cancelAnimationFrame(frame);
       canvas.removeEventListener('pointerdown', onPointerDown);
       canvas.removeEventListener('pointermove', onPointerMove);

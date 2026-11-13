@@ -1,0 +1,125 @@
+Ref point mode 2 (machine zero, absolute) | d8 10
+Ref point set | f0
+Set absolute | e6 01
+Enable block cutting 0 | f1 02 00
+Start process | d8 00
+Feed repeat 0.000mm 0.000mm | e7 06 00 00 00 00 00 00 00 00 00 00
+Process top-left 90.000mm 40.000mm | e7 03 00 00 05 3f 10 00 00 02 38 40
+Process bottom-right 170.000mm 80.000mm | e7 07 00 00 0a 30 10 00 00 04 71 00
+Document min point 90.000mm 40.000mm | e7 50 00 00 05 3f 10 00 00 02 38 40
+Document max point 170.000mm 80.000mm | e7 51 00 00 0a 30 10 00 00 04 71 00
+Process repeat 1 1 0.000mm 0.000mm | e7 04 00 01 00 01 00 00 00 00 00 00 00 00 00 00
+Array direction 0 | e7 05 00
+Layer speed 0 150.000mm/s | c9 04 00 00 00 09 13 70
+Layer laser 1 min power 0 11.99% | c6 31 00 0f 2d
+Layer laser 1 max power 0 17.99% | c6 32 00 17 04
+Layer laser 2 min power 0 0.00% | c6 41 00 00 00
+Layer laser 2 max power 0 0.00% | c6 42 00 00 00
+Layer laser 3 min power 0 0.00% | c6 35 00 00 00
+Layer laser 3 max power 0 0.00% | c6 36 00 00 00
+Layer laser 4 min power 0 0.00% | c6 37 00 00 00
+Layer laser 4 max power 0 0.00% | c6 38 00 00 00
+Layer colour 0 #0000ff | ca 06 00 00 07 7c 00 00
+Layer work mode 0 0 | ca 41 00 00
+Layer min point 0 100.000mm 50.000mm | e7 52 00 00 00 06 0d 20 00 00 03 06 50
+Layer max point 0 160.000mm 70.000mm | e7 53 00 00 00 09 62 00 00 00 04 22 70
+Layer min point ex 0 100.000mm 50.000mm | e7 61 00 00 00 06 0d 20 00 00 03 06 50
+Layer max point ex 0 160.000mm 70.000mm | e7 62 00 00 00 09 62 00 00 00 04 22 70
+Layer speed 1 12.500mm/s | c9 04 01 00 00 00 61 54
+Layer laser 1 min power 1 50.00% | c6 31 01 3f 7f
+Layer laser 1 max power 1 64.99% | c6 32 01 53 18
+Layer laser 2 min power 1 0.00% | c6 41 01 00 00
+Layer laser 2 max power 1 0.00% | c6 42 01 00 00
+Layer laser 3 min power 1 0.00% | c6 35 01 00 00
+Layer laser 3 max power 1 0.00% | c6 36 01 00 00
+Layer laser 4 min power 1 0.00% | c6 37 01 00 00
+Layer laser 4 max power 1 0.00% | c6 38 01 00 00
+Layer colour 1 #ff0000 | ca 06 01 00 00 00 01 7f
+Layer work mode 1 0 | ca 41 01 00
+Layer min point 1 90.000mm 40.000mm | e7 52 01 00 00 05 3f 10 00 00 02 38 40
+Layer max point 1 170.000mm 80.000mm | e7 53 01 00 00 0a 30 10 00 00 04 71 00
+Layer min point ex 1 90.000mm 40.000mm | e7 61 01 00 00 05 3f 10 00 00 02 38 40
+Layer max point ex 1 170.000mm 80.000mm | e7 62 01 00 00 0a 30 10 00 00 04 71 00
+Max layer index 1 | ca 22 01
+Pen offset 0 0.000mm | e7 54 00 00 00 00 00 00
+Pen offset 1 0.000mm | e7 54 01 00 00 00 00 00
+Layer offset 0 0.000mm | e7 55 00 00 00 00 00 00
+Layer offset 1 0.000mm | e7 55 01 00 00 00 00 00
+Display offset 0.000mm 0.000mm | f1 03 00 00 00 00 00 00 00 00 00 00
+Element max index 0 | f1 00 00
+Element name max index 0 | f1 01 00
+Element index 0 | f2 00 00
+Element name index 0 | f2 01 00
+Element name [05 2a 39 1c 41 04 6a 15 08 20] | f2 02 05 2a 39 1c 41 04 6a 15 08 20
+Element array min point 90.000mm 40.000mm | f2 03 00 00 05 3f 10 00 00 02 38 40
+Element array max point 170.000mm 80.000mm | f2 04 00 00 0a 30 10 00 00 04 71 00
+Element array add 0.000mm 0.000mm | f2 06 00 00 00 00 00 00 00 00 00 00
+Element array mirror 0 | f2 07 00
+Element array 1 1 80.000mm 40.000mm | f2 05 00 01 00 01 00 00 04 71 00 00 00 02 38 40
+Array start 0 | ea 00
+Set current element index 0 | e7 60 00
+Array min point 90.000mm 40.000mm | e7 13 00 00 05 3f 10 00 00 02 38 40
+Array max point 170.000mm 80.000mm | e7 17 00 00 0a 30 10 00 00 04 71 00
+Array add 0.000mm 0.000mm | e7 23 00 00 00 00 00 00 00 00 00 00
+Array mirror 0 | e7 24 00
+Array repeat 1 1 80.000mm 40.000mm | e7 08 00 01 00 01 00 00 04 71 00 00 00 02 38 40
+Layer flag 00 (docs: "End Layer") | ca 01 00
+Layer number 0 | ca 02 00
+Laser 2 offset disabled | ca 01 30
+Layer device 0 | ca 01 10
+Air assist on | ca 01 13
+Speed 150.000mm/s | c9 02 00 00 09 13 70
+Laser on delay 0.000ms | c6 12 00 00 00 00 00
+Laser off delay 0.000ms | c6 13 00 00 00 00 00
+Laser 1 min power 11.99% | c6 01 0f 2d
+Laser 1 max power 17.99% | c6 02 17 04
+Laser 2 min power 0.00% | c6 21 00 00
+Laser 2 max power 0.00% | c6 22 00 00
+Laser 3 min power 0.00% | c6 05 00 00
+Laser 3 max power 0.00% | c6 06 00 00
+Laser 4 min power 0.00% | c6 07 00 00
+Laser 4 max power 0.00% | c6 08 00 00
+Laser tube enable 15 | ca 03 0f
+Ext IO enable 0 | ca 10 00
+Move abs 100.000mm 50.000mm | 88 00 00 06 0d 20 00 00 03 06 50
+Cut abs 120.000mm 50.000mm | a8 00 00 07 29 40 00 00 03 06 50
+Cut abs 120.000mm 70.000mm | a8 00 00 07 29 40 00 00 04 22 70
+Cut abs 100.000mm 70.000mm | a8 00 00 06 0d 20 00 00 04 22 70
+Cut abs 100.000mm 50.000mm | a8 00 00 06 0d 20 00 00 03 06 50
+Move abs 140.000mm 50.000mm | 88 00 00 08 45 60 00 00 03 06 50
+Cut abs 160.000mm 50.000mm | a8 00 00 09 62 00 00 00 03 06 50
+Cut abs 160.000mm 70.000mm | a8 00 00 09 62 00 00 00 04 22 70
+Cut abs 140.000mm 70.000mm | a8 00 00 08 45 60 00 00 04 22 70
+Cut abs 140.000mm 50.000mm | a8 00 00 08 45 60 00 00 03 06 50
+Layer flag 00 (docs: "End Layer") | ca 01 00
+Layer number 1 | ca 02 01
+Laser 2 offset disabled | ca 01 30
+Layer device 0 | ca 01 10
+Air assist on | ca 01 13
+Speed 12.500mm/s | c9 02 00 00 00 61 54
+Laser on delay 0.000ms | c6 12 00 00 00 00 00
+Laser off delay 0.000ms | c6 13 00 00 00 00 00
+Laser 1 min power 50.00% | c6 01 3f 7f
+Laser 1 max power 64.99% | c6 02 53 18
+Laser 2 min power 0.00% | c6 21 00 00
+Laser 2 max power 0.00% | c6 22 00 00
+Laser 3 min power 0.00% | c6 05 00 00
+Laser 3 max power 0.00% | c6 06 00 00
+Laser 4 min power 0.00% | c6 07 00 00
+Laser 4 max power 0.00% | c6 08 00 00
+Laser tube enable 15 | ca 03 0f
+Ext IO enable 0 | ca 10 00
+Move abs 90.000mm 40.000mm | 88 00 00 05 3f 10 00 00 02 38 40
+Cut abs 170.000mm 40.000mm | a8 00 00 0a 30 10 00 00 02 38 40
+Cut abs 170.000mm 80.000mm | a8 00 00 0a 30 10 00 00 04 71 00
+Cut abs 90.000mm 80.000mm | a8 00 00 05 3f 10 00 00 04 71 00
+Cut abs 90.000mm 40.000mm | a8 00 00 05 3f 10 00 00 02 38 40
+Move abs 90.000mm 40.000mm | 88 00 00 05 3f 10 00 00 02 38 40
+Cut abs 170.000mm 40.000mm | a8 00 00 0a 30 10 00 00 02 38 40
+Cut abs 170.000mm 80.000mm | a8 00 00 0a 30 10 00 00 04 71 00
+Cut abs 90.000mm 80.000mm | a8 00 00 05 3f 10 00 00 04 71 00
+Cut abs 90.000mm 40.000mm | a8 00 00 05 3f 10 00 00 02 38 40
+Array end | eb
+Block end | e7 00
+Set param 6 32 640 640 | da 01 06 20 00 00 00 05 00 00 00 00 05 00
+End of file | d7

@@ -33,6 +33,8 @@ export interface Layer {
   readonly maxPowerPct: number;
   readonly minPowerPct: number;
   readonly passes: number;
+  /** Full width of the laser cut in mm; 0 turns kerf compensation off. */
+  readonly kerfMm: number;
   readonly enabled: boolean;
 }
 

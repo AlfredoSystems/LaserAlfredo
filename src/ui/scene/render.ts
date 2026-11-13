@@ -3,6 +3,7 @@ import { handlePosition, SCALE_HANDLES } from '../../model/handles';
 import { applyToPoint, type Matrix } from '../../model/transform';
 import type { Bounds, LaserDocument, Point, Shape } from '../../model/types';
 import { toScreen, type View } from '../../model/view';
+import type { PreviewSegment } from '../../toolpath/generate';
 
 export const HANDLE_SIZE_PX = 8;
 export const ROTATE_HANDLE_OFFSET_PX = 26;
@@ -14,6 +15,9 @@ const COLORS = {
   gridMinor: '#e4e5e1',
   gridMajor: '#c9cbc6',
   selection: '#1d6fe0',
+  travel: 'rgba(214, 64, 64, 0.6)',
+  pending: 'rgba(90, 96, 106, 0.28)',
+  head: '#e03131',
   marqueeFill: 'rgba(29, 111, 224, 0.12)',
   axisLabel: '#8b93a0',
 };
@@ -120,6 +124,91 @@ export function rotateHandleScreen(view: View, bounds: Bounds): Point {
   return { x: top.x, y: top.y - ROTATE_HANDLE_OFFSET_PX };
 }
 
+export interface JobPreview {
+  readonly segments: readonly PreviewSegment[];
+  /** Colour of each job layer, indexed like `PreviewSegment.layer`. */
+  readonly colors: readonly string[];
+  readonly fraction: number;
+}
+
+/** Draws the job as the machine will run it: cuts so far, travel moves, and the head. */
+function drawPreview(ctx: CanvasRenderingContext2D, view: View, dpr: number, preview: JobPreview): void {
+  const { segments } = preview;
+  const last = segments[segments.length - 1];
+  if (!last) return;
+  const limit = last.endMm * preview.fraction;
+  ctx.setTransform(dpr * view.scale, 0, 0, dpr * view.scale, dpr * view.offsetX, dpr * view.offsetY);
+  ctx.lineJoin = 'round';
+
+  // Index of the first segment that is not fully done.
+  let lo = 0;
+  let hi = segments.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    const segment = segments[mid];
+    if (segment && segment.endMm <= limit) lo = mid + 1;
+    else hi = mid;
+  }
+  const done = lo;
+  const current = segments[done];
+  let head: Point = { x: last.bx, y: last.by };
+  let partialLayer: number | null = null;
+  if (current) {
+    const length = Math.hypot(current.bx - current.ax, current.by - current.ay);
+    const t = length > 0 ? Math.min(1, Math.max(0, 1 - (current.endMm - limit) / length)) : 0;
+    head = { x: current.ax + (current.bx - current.ax) * t, y: current.ay + (current.by - current.ay) * t };
+    partialLayer = current.layer;
+  }
+
+  /** Traces segments [from, to) that are travel moves (-1), one layer's cuts, or any cut. */
+  const trace = (from: number, to: number, layer: number | 'cuts', withPartial: boolean) => {
+    ctx.beginPath();
+    let px = Number.NaN;
+    let py = Number.NaN;
+    for (let i = from; i < to; i++) {
+      const s = segments[i];
+      if (!s || (layer === 'cuts' ? s.layer < 0 : s.layer !== layer)) continue;
+      if (s.ax !== px || s.ay !== py) ctx.moveTo(s.ax, s.ay);
+      ctx.lineTo(s.bx, s.by);
+      px = s.bx;
+      py = s.by;
+    }
+    if (withPartial && current && partialLayer === layer) {
+      if (current.ax !== px || current.ay !== py) ctx.moveTo(current.ax, current.ay);
+      ctx.lineTo(head.x, head.y);
+    }
+  };
+
+  // Cuts still to come, faint.
+  ctx.setLineDash([]);
+  ctx.lineWidth = 1 / view.scale;
+  ctx.strokeStyle = COLORS.pending;
+  trace(done, segments.length, 'cuts', false);
+  ctx.stroke();
+
+  // Travel moves so far.
+  ctx.strokeStyle = COLORS.travel;
+  ctx.setLineDash([4 / view.scale, 3 / view.scale]);
+  trace(0, done, -1, true);
+  ctx.stroke();
+
+  // Cuts so far, in layer colours.
+  ctx.setLineDash([]);
+  ctx.lineWidth = 1.5 / view.scale;
+  preview.colors.forEach((color, layer) => {
+    ctx.strokeStyle = color;
+    trace(0, done, layer, true);
+    ctx.stroke();
+  });
+
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const p = toScreen(view, head);
+  ctx.fillStyle = COLORS.head;
+  ctx.beginPath();
+  ctx.arc(p.x, p.y, 4, 0, Math.PI * 2);
+  ctx.fill();
+}
+
 export interface RenderInput {
   readonly doc: LaserDocument;
   readonly selection: ReadonlySet<string>;
@@ -132,6 +221,8 @@ export interface RenderInput {
   /** Uncommitted transform of the selection while dragging. */
   readonly preview: Matrix | null;
   readonly marquee: { readonly a: Point; readonly b: Point } | null;
+  /** When set, the job preview is drawn instead of the editable shapes. */
+  readonly jobPreview: JobPreview | null;
 }
 
 export function renderScene(ctx: CanvasRenderingContext2D, input: RenderInput): void {
@@ -140,6 +231,10 @@ export function renderScene(ctx: CanvasRenderingContext2D, input: RenderInput): 
   ctx.fillStyle = COLORS.outside;
   ctx.fillRect(0, 0, input.widthPx, input.heightPx);
   drawBed(ctx, view, input.bed);
+  if (input.jobPreview) {
+    drawPreview(ctx, view, dpr, input.jobPreview);
+    return;
+  }
 
   // Shapes are drawn in document space so cached paths survive pan and zoom.
   const paths = layerPaths(doc.shapes, selection);

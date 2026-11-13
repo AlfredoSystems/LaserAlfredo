@@ -2,6 +2,7 @@ import { useMemo, useRef, useState, type DragEvent } from 'react';
 import { boundsContainsBounds } from '../geometry/bounds';
 import { HL1060_BED } from '../model/bed';
 import { boundsOfShapes } from '../model/selection';
+import { JobPanel } from './JobPanel';
 import { LayersPanel } from './LayersPanel';
 import { NumberField } from './NumberField';
 import { BED_BOUNDS, useAppStore } from './store';
@@ -162,6 +163,7 @@ export function App() {
         <aside className="sidebar">
           <TransformPanel />
           <LayersPanel />
+          <JobPanel />
         </aside>
       </div>
       <StatusBar />
