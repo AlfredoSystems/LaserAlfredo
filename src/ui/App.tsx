@@ -3,7 +3,10 @@ import { boundsContainsBounds } from '../geometry/bounds';
 import { HL1060_BED } from '../model/bed';
 import { boundsOfShapes } from '../model/selection';
 import { JobPanel } from './JobPanel';
+import { useJobStore } from './jobStore';
 import { LayersPanel } from './LayersPanel';
+import { NestingPanel } from './NestingPanel';
+import { useNestStore } from './nestStore';
 import { NumberField } from './NumberField';
 import { BED_BOUNDS, useAppStore } from './store';
 import { TransformPanel } from './TransformPanel';
@@ -128,6 +131,50 @@ function StatusBar() {
   );
 }
 
+function SidebarTabs() {
+  const nesting = useNestStore((state) => state.panelOpen);
+  const show = (nest: boolean) => {
+    // The job preview's controls live on the Cut tab, so it does not outlive it.
+    if (nest) useJobStore.getState().setPreview(false);
+    useNestStore.getState().setPanelOpen(nest);
+  };
+
+  return (
+    <>
+      <div className="tabs" role="tablist" aria-label="Sidebar">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={!nesting}
+          className={`tab ${nesting ? '' : 'tab-active'}`}
+          data-testid="tab-cut"
+          onClick={() => show(false)}
+        >
+          Cut
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={nesting}
+          className={`tab ${nesting ? 'tab-active' : ''}`}
+          data-testid="tab-nest"
+          onClick={() => show(true)}
+        >
+          Nest
+        </button>
+      </div>
+      {nesting ? (
+        <NestingPanel />
+      ) : (
+        <>
+          <LayersPanel />
+          <JobPanel />
+        </>
+      )}
+    </>
+  );
+}
+
 export function App() {
   const [dropping, setDropping] = useState(false);
 
@@ -162,8 +209,7 @@ export function App() {
         <Workspace />
         <aside className="sidebar">
           <TransformPanel />
-          <LayersPanel />
-          <JobPanel />
+          <SidebarTabs />
         </aside>
       </div>
       <StatusBar />

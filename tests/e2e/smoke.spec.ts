@@ -213,3 +213,148 @@ test('refuses to export a job that leaves the bed', async ({ page }) => {
   await expect(page.getByTestId('job-problem')).toContainText('outside');
   await expect(page.getByTestId('export-rd')).toBeDisabled();
 });
+
+/** Opens the Nest tab and sets the quantity of the first listed part. */
+async function openNestTab(page: Page, quantity: number) {
+  await page.getByTestId('tab-nest').click();
+  const qty = page.getByTestId('nest-qty').first();
+  await qty.fill(String(quantity));
+  await qty.press('Enter');
+  await expect(qty).toHaveValue(String(quantity));
+}
+
+async function setSheet(page: Page, widthMm: number, heightMm: number) {
+  const w = page.getByTestId('nest-sheet-w');
+  await w.fill(String(widthMm));
+  await w.press('Enter');
+  const h = page.getByTestId('nest-sheet-h');
+  await h.fill(String(heightMm));
+  await h.press('Enter');
+}
+
+/** The first layout can take a while on a slow machine. */
+const NEST_TIMEOUT = { timeout: 30_000 };
+
+test('keeps the layers and job panels on the Cut tab', async ({ page }) => {
+  await importSample(page, 'sample.dxf', sampleDxf());
+  await expect(page.getByTestId('tab-cut')).toHaveAttribute('aria-selected', 'true');
+  await expect(page.getByTestId('layer-row')).toHaveCount(1);
+  await page.getByTestId('tab-nest').click();
+  await expect(page.getByTestId('layer-row')).toHaveCount(0);
+  await expect(page.getByTestId('nest-start')).toBeVisible();
+  await page.getByTestId('tab-cut').click();
+  await expect(page.getByTestId('layer-row')).toHaveCount(1);
+  await expect(page.getByTestId('export-rd')).toBeEnabled();
+});
+
+test('nests copies of a part, applies the sheet and undoes it', async ({ page }) => {
+  await page.getByTestId('tab-nest').click();
+  await expect(page.getByTestId('nest-start')).toBeDisabled();
+
+  await importSample(page, 'sample.dxf', sampleDxf());
+  // The rectangle and the circle inside it are one part.
+  await expect(page.getByTestId('nest-part')).toHaveCount(1);
+  await expect(page.getByTestId('nest-part')).toContainText('100 × 50 mm');
+  await expect(page.getByTestId('nest-source')).toContainText('selection');
+  await expect(page.getByTestId('nest-apply')).toHaveCount(0);
+
+  await openNestTab(page, 3);
+  await page.getByTestId('nest-start').click();
+  await expect(page.getByTestId('nest-utilization')).toHaveText(/^\d+\.\d %$/, NEST_TIMEOUT);
+  await expect(page.getByTestId('nest-placed')).toHaveText('3 parts');
+  await expect(page.getByTestId('nest-sheets')).toHaveText('1');
+  await expect(page.getByTestId('nest-unplaced')).toHaveCount(0);
+  await expect(page.getByTestId('nest-sheet-label')).toHaveCount(0);
+  // Nothing changes in the document until the sheet is applied.
+  await expect(page.getByTestId('shape-count')).toHaveText('2 shapes');
+
+  await page.getByTestId('nest-apply').click();
+  await expect(page.getByTestId('shape-count')).toHaveText('6 shapes');
+  await expect(page.getByTestId('selection-count')).toHaveText('6');
+  await expect(page.getByTestId('out-of-bed')).toHaveCount(0);
+  await expect(page.getByTestId('nest-apply')).toBeDisabled();
+  await expect(page.getByTestId('nest-stop')).toHaveCount(0);
+
+  await page.getByTestId('workspace-canvas').focus();
+  await page.keyboard.press('Control+z');
+  await expect(page.getByTestId('shape-count')).toHaveText('2 shapes');
+  await page.keyboard.press('Control+y');
+  await expect(page.getByTestId('shape-count')).toHaveText('6 shapes');
+});
+
+test('nests the whole document when nothing is selected', async ({ page }) => {
+  await importSample(page, 'sample.dxf', sampleDxf());
+  await page.getByTestId('workspace-canvas').focus();
+  await page.keyboard.press('Escape');
+  await page.getByTestId('tab-nest').click();
+  await expect(page.getByTestId('nest-source')).toContainText('whole document');
+  await page.getByTestId('nest-start').click();
+  await expect(page.getByTestId('nest-placed')).toHaveText('1 part', NEST_TIMEOUT);
+  await page.getByTestId('nest-apply').click();
+  await expect(page.getByTestId('shape-count')).toHaveText('2 shapes');
+});
+
+test('spreads parts over several sheets and exports one .rd per sheet', async ({ page }) => {
+  await importSample(page, 'sample.dxf', sampleDxf());
+  await openNestTab(page, 3);
+  // Room for exactly one 100 × 50 part inside the 5 mm margin.
+  await setSheet(page, 130, 80);
+  await page.getByTestId('nest-start').click();
+
+  const label = page.getByTestId('nest-sheet-label');
+  await expect(label).toContainText('Sheet 1 of 3', NEST_TIMEOUT);
+  await expect(label).toContainText('1 part');
+  await expect(page.getByTestId('nest-sheets')).toHaveText('3');
+  await expect(page.getByTestId('nest-placed')).toHaveText('3 parts');
+  await expect(page.getByTestId('nest-prev')).toBeDisabled();
+  await page.getByTestId('nest-next').click();
+  await expect(label).toContainText('Sheet 2 of 3');
+  await page.getByTestId('nest-next').click();
+  await expect(label).toContainText('Sheet 3 of 3');
+  await expect(page.getByTestId('nest-next')).toBeDisabled();
+  await page.getByTestId('nest-prev').click();
+  await expect(label).toContainText('Sheet 2 of 3');
+
+  const names: string[] = [];
+  const sizes: number[] = [];
+  const saved: Promise<void>[] = [];
+  page.on('download', (download) => {
+    names.push(download.suggestedFilename());
+    saved.push(
+      (async () => {
+        let size = 0;
+        for await (const chunk of await download.createReadStream()) size += (chunk as Buffer).length;
+        sizes.push(size);
+      })(),
+    );
+  });
+  await page.getByTestId('nest-export').click();
+  await expect(page.getByTestId('notice')).toContainText('Exported 3 sheets');
+  await expect.poll(() => names.length).toBe(3);
+  await Promise.all(saved);
+  expect([...names].sort()).toEqual(['job-sheet1.rd', 'job-sheet2.rd', 'job-sheet3.rd']);
+  expect(sizes).toHaveLength(3);
+  for (const size of sizes) expect(size).toBeGreaterThan(50);
+
+  // Applying one sheet puts only that sheet's part into the document.
+  await page.getByTestId('nest-apply').click();
+  await expect(page.getByTestId('shape-count')).toHaveText('2 shapes');
+  // Applying another sheet replaces the first instead of piling up.
+  await page.getByTestId('nest-next').click();
+  await page.getByTestId('nest-apply').click();
+  await expect(page.getByTestId('shape-count')).toHaveText('2 shapes');
+  await expect(page.getByTestId('selection-count')).toHaveText('2');
+});
+
+test('warns about a part that fits no sheet', async ({ page }) => {
+  await importSample(page, 'sample.dxf', sampleDxf());
+  await openNestTab(page, 1);
+  await setSheet(page, 50, 40);
+  await page.getByTestId('nest-start').click();
+  await expect(page.getByTestId('nest-unplaced')).toContainText('1 part does not fit', NEST_TIMEOUT);
+  await expect(page.getByTestId('nest-placed')).toHaveText('0 parts');
+  await expect(page.getByTestId('nest-sheets')).toHaveText('0');
+  await expect(page.getByTestId('nest-apply')).toBeDisabled();
+  await expect(page.getByTestId('nest-export')).toBeDisabled();
+  await expect(page.getByTestId('shape-count')).toHaveText('2 shapes');
+});
