@@ -27,6 +27,29 @@ function message(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+export interface ExportedFile {
+  readonly fileName: string;
+  readonly byteLength: number;
+}
+
+/**
+ * Encodes a built job with the current power cap and machine zero and hands
+ * it to the file export. Throws when the job is empty or leaves the bed:
+ * such a job is refused, never clipped.
+ */
+async function sendRd(built: BuiltJob, fileName: string): Promise<ExportedFile> {
+  if (built.problem) throw new Error(built.problem);
+  const { maxPowerCapPct, origin } = useJobStore.getState();
+  const bytes = await jobWorker().encodeRd(built.job, { bed: HL1060_BED, maxPowerCapPct, origin });
+  await fileExport.send({ fileName, bytes });
+  return { fileName, byteLength: bytes.length };
+}
+
+/** Builds the job for a document other than the one on screen and exports it as an .rd file. */
+export async function exportDocumentRd(doc: LaserDocument, fileName: string): Promise<ExportedFile> {
+  return sendRd(await jobWorker().buildJob(doc, HL1060_BED), fileName);
+}
+
 export interface JobState {
   readonly status: 'idle' | 'computing' | 'ready' | 'error';
   /** The job for `builtFor`; kept while a newer one is computing so the panel doesn't flicker. */
@@ -126,7 +149,7 @@ export const useJobStore = create<JobState>((set, get) => {
       try {
         // Never export a job that is older than the document on screen.
         for (let i = 0; i < 20 && get().builtFor !== useAppStore.getState().doc; i++) await pending;
-        const { built, builtFor, error, maxPowerCapPct, fileName, origin } = get();
+        const { built, builtFor, error, fileName } = get();
         if (!built || builtFor !== useAppStore.getState().doc) {
           notify({ kind: 'error', text: error ?? 'Nothing to export.' });
           return;
@@ -135,10 +158,8 @@ export const useJobStore = create<JobState>((set, get) => {
           notify({ kind: 'error', text: built.problem });
           return;
         }
-        const bytes = await jobWorker().encodeRd(built.job, { bed: HL1060_BED, maxPowerCapPct, origin });
-        const payload = { fileName: safeFileName(fileName, 'rd'), bytes };
-        await fileExport.send(payload);
-        notify({ kind: 'info', text: `Exported ${payload.fileName} (${bytes.length} bytes)` });
+        const sent = await sendRd(built, safeFileName(fileName, 'rd'));
+        notify({ kind: 'info', text: `Exported ${sent.fileName} (${sent.byteLength} bytes)` });
       } catch (error) {
         notify({ kind: 'error', text: `Export failed — ${message(error)}` });
       } finally {

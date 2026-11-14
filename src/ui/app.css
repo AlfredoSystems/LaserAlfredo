@@ -149,6 +149,27 @@ button.primary:hover:not(:disabled) {
   gap: 0.45rem;
 }
 
+.tabs {
+  display: flex;
+  flex: none;
+  border-bottom: 1px solid var(--border);
+}
+
+.tab {
+  flex: 1;
+  border: none;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  background: none;
+  padding: 0.4rem 0.55rem;
+  color: var(--muted);
+}
+
+.tab-active {
+  color: inherit;
+  border-bottom-color: var(--accent);
+}
+
 .panel-grow {
   flex: 1 1 0;
   min-height: 0;
@@ -295,6 +316,57 @@ button.primary:hover:not(:disabled) {
 
 .stats dd {
   margin: 0;
+}
+
+.stats-pairs {
+  grid-template-columns: auto 1fr;
+}
+
+.stats-pairs dd {
+  text-align: right;
+}
+
+.nest-parts {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  max-height: 11rem;
+  overflow-y: auto;
+}
+
+.nest-part {
+  display: grid;
+  grid-template-columns: 1fr 4.6rem auto;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.nest-part-size {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.nest-switcher > button {
+  flex: none;
+  min-width: 2rem;
+}
+
+.nest-sheet-label {
+  flex: 1;
+  text-align: center;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.nest-sheet-parts {
+  color: var(--muted);
 }
 
 .panel-error,

@@ -16,7 +16,7 @@ import {
 } from '../model/document';
 import { boundsOfShapes } from '../model/selection';
 import { applyToPoints, translation, type Matrix } from '../model/transform';
-import type { Bounds, LaserDocument, Point } from '../model/types';
+import type { Bounds, ColoredPolyline, LaserDocument, Point } from '../model/types';
 
 const HISTORY_LIMIT = 100;
 const EMPTY_SELECTION: ReadonlySet<string> = new Set();
@@ -57,6 +57,11 @@ export interface AppState {
   clearSelection(): void;
   transformSelection(m: Matrix): void;
   deleteSelection(): void;
+  /**
+   * Removes the shapes with the given ids and adds the paths as new shapes,
+   * as one undo step. The new shapes become the selection; returns their ids.
+   */
+  replaceShapes(removeIds: Iterable<string>, paths: readonly ColoredPolyline[]): readonly string[];
   setSelectionColor(color: string): void;
   patchLayer(color: string, patch: LayerPatch): void;
   undo(): void;
@@ -179,6 +184,13 @@ export const useAppStore = create<AppState>((set, get) => {
     deleteSelection() {
       const { doc, selection } = get();
       commit(removeShapes(doc, selection), { selection: EMPTY_SELECTION });
+    },
+    replaceShapes(removeIds, paths) {
+      const shapes = shapesFromPaths(paths, nextId);
+      const doc = addShapes(removeShapes(get().doc, new Set(removeIds)), shapes);
+      const ids = shapes.map((shape) => shape.id);
+      commit(doc, { selection: liveSelection(doc, new Set(ids)) });
+      return ids;
     },
     setSelectionColor(color) {
       const { doc, selection } = get();
