@@ -1,5 +1,7 @@
 import type { Bed } from '../../model/bed';
+import { isInScope, type GroupPath } from '../../model/groups';
 import { handlePosition, SCALE_HANDLES } from '../../model/handles';
+import { boundsOfShapes } from '../../model/selection';
 import { applyToPoint, type Matrix } from '../../model/transform';
 import type { Bounds, LaserDocument, Point, Shape } from '../../model/types';
 import { toScreen, type View } from '../../model/view';
@@ -8,6 +10,11 @@ import type { PreviewSegment } from '../../toolpath/generate';
 export const HANDLE_SIZE_PX = 8;
 export const ROTATE_HANDLE_OFFSET_PX = 26;
 
+/** Opacity of shapes outside the entered group, relative to their normal one. */
+const DIMMED_ALPHA = 0.25;
+/** How far the frame of the entered group sits outside its bounds. */
+const SCOPE_FRAME_PAD_PX = 6;
+
 const COLORS = {
   outside: '#23262b',
   bed: '#f6f6f3',
@@ -15,6 +22,7 @@ const COLORS = {
   gridMinor: '#e4e5e1',
   gridMajor: '#c9cbc6',
   selection: '#1d6fe0',
+  scope: '#7c5cd6',
   travel: 'rgba(214, 64, 64, 0.6)',
   pending: 'rgba(90, 96, 106, 0.28)',
   head: '#e03131',
@@ -27,14 +35,20 @@ const COLORS = {
 interface LayerPaths {
   readonly normal: Path2D;
   readonly selected: Path2D;
+  /** Shapes outside the entered group. */
+  readonly dimmed: Path2D;
   hasNormal: boolean;
   hasSelected: boolean;
+  hasDimmed: boolean;
 }
 
 interface PathCache {
   readonly shapes: readonly Shape[];
   readonly selection: ReadonlySet<string>;
+  readonly scope: GroupPath;
   readonly byColor: Map<string, LayerPaths>;
+  /** Bounds of the entered group; null at top level. */
+  readonly scopeBounds: Bounds | null;
 }
 
 let cache: PathCache | null = null;
@@ -50,26 +64,39 @@ function tracePath(path: Path2D, shape: Shape): void {
   if (shape.closed) path.closePath();
 }
 
-/** One Path2D per layer and selection state, rebuilt only when the document or selection changes. */
-function layerPaths(shapes: readonly Shape[], selection: ReadonlySet<string>): Map<string, LayerPaths> {
-  if (cache && cache.shapes === shapes && cache.selection === selection) return cache.byColor;
+/** One Path2D per layer and state, rebuilt only when the document, selection or scope changes. */
+function layerPaths(shapes: readonly Shape[], selection: ReadonlySet<string>, scope: GroupPath): PathCache {
+  if (cache && cache.shapes === shapes && cache.selection === selection && cache.scope === scope) return cache;
   const byColor = new Map<string, LayerPaths>();
+  const inside: Shape[] = [];
   for (const shape of shapes) {
     let entry = byColor.get(shape.color);
     if (!entry) {
-      entry = { normal: new Path2D(), selected: new Path2D(), hasNormal: false, hasSelected: false };
+      entry = {
+        normal: new Path2D(),
+        selected: new Path2D(),
+        dimmed: new Path2D(),
+        hasNormal: false,
+        hasSelected: false,
+        hasDimmed: false,
+      };
       byColor.set(shape.color, entry);
     }
+    const reachable = isInScope(shape, scope);
+    if (reachable && scope.length > 0) inside.push(shape);
     if (selection.has(shape.id)) {
       tracePath(entry.selected, shape);
       entry.hasSelected = true;
-    } else {
+    } else if (reachable) {
       tracePath(entry.normal, shape);
       entry.hasNormal = true;
+    } else {
+      tracePath(entry.dimmed, shape);
+      entry.hasDimmed = true;
     }
   }
-  cache = { shapes, selection, byColor };
-  return byColor;
+  cache = { shapes, selection, scope, byColor, scopeBounds: boundsOfShapes(inside) };
+  return cache;
 }
 
 function gridStepMm(scale: number): number {
@@ -211,63 +238,20 @@ function drawPreview(ctx: CanvasRenderingContext2D, view: View, dpr: number, pre
   ctx.fill();
 }
 
-/** A nesting result on show: the placed shapes of one sheet, in bed coordinates. */
-export interface NestPreviewInput {
-  /** Must keep its identity while the layout is unchanged; the paths are cached on it. */
-  readonly shapes: readonly Shape[];
-  readonly sheetWidthMm: number;
-  readonly sheetHeightMm: number;
+/** The sheet being nested on. Its top-left corner is the bed's. */
+export interface SheetInput {
+  readonly widthMm: number;
+  readonly heightMm: number;
   readonly marginMm: number;
 }
 
-let nestCache: { readonly shapes: readonly Shape[]; readonly byColor: Map<string, Path2D> } | null = null;
-
-/** One Path2D per layer colour, rebuilt only when a different layout arrives. */
-function nestPaths(shapes: readonly Shape[]): Map<string, Path2D> {
-  if (nestCache && nestCache.shapes === shapes) return nestCache.byColor;
-  const byColor = new Map<string, Path2D>();
-  for (const shape of shapes) {
-    let path = byColor.get(shape.color);
-    if (!path) {
-      path = new Path2D();
-      byColor.set(shape.color, path);
-    }
-    tracePath(path, shape);
-  }
-  nestCache = { shapes, byColor };
-  return byColor;
-}
-
-/** Draws the nested sheet over the faded document. The sheet's top-left corner is the bed's. */
-function drawNestPreview(
-  ctx: CanvasRenderingContext2D,
-  input: RenderInput,
-  nest: NestPreviewInput,
-  docPaths: Map<string, LayerPaths>,
-): void {
-  const { view, dpr, bed } = input;
-  const toDocumentSpace = () =>
-    ctx.setTransform(dpr * view.scale, 0, 0, dpr * view.scale, dpr * view.offsetX, dpr * view.offsetY);
-  const layers = new Map(input.doc.layers.map((layer) => [layer.color, layer]));
-  ctx.lineJoin = 'round';
+/** Shades the part of the bed that is not sheet, outlines the sheet and dashes its margin. */
+function drawSheet(ctx: CanvasRenderingContext2D, view: View, dpr: number, bed: Bed, sheet: SheetInput): void {
+  ctx.setTransform(dpr * view.scale, 0, 0, dpr * view.scale, dpr * view.offsetX, dpr * view.offsetY);
   ctx.setLineDash([]);
-
-  // The document's own shapes, faint and without selection marks.
-  toDocumentSpace();
-  ctx.lineWidth = 1 / view.scale;
-  ctx.globalAlpha = 0.18;
-  for (const [color, entry] of docPaths) {
-    ctx.strokeStyle = color;
-    if (entry.hasNormal) ctx.stroke(entry.normal);
-    if (entry.hasSelected) ctx.stroke(entry.selected);
-  }
-  ctx.globalAlpha = 1;
-
-  // Shade the part of the bed that is not sheet, then outline the sheet.
-  const w = Math.min(nest.sheetWidthMm, bed.widthMm);
-  const h = Math.min(nest.sheetHeightMm, bed.heightMm);
-  const smaller = w < bed.widthMm || h < bed.heightMm;
-  if (smaller) {
+  const w = Math.min(sheet.widthMm, bed.widthMm);
+  const h = Math.min(sheet.heightMm, bed.heightMm);
+  if (w < bed.widthMm || h < bed.heightMm) {
     ctx.fillStyle = COLORS.offSheet;
     ctx.fillRect(w, 0, bed.widthMm - w, h);
     ctx.fillRect(0, h, bed.widthMm, bed.heightMm - h);
@@ -275,7 +259,7 @@ function drawNestPreview(
     ctx.lineWidth = 1.5 / view.scale;
     ctx.strokeRect(0, 0, w, h);
   }
-  const margin = nest.marginMm;
+  const margin = sheet.marginMm;
   if (margin > 0 && w > 2 * margin && h > 2 * margin) {
     ctx.strokeStyle = COLORS.sheetBorder;
     ctx.globalAlpha = 0.6;
@@ -285,21 +269,6 @@ function drawNestPreview(
     ctx.setLineDash([]);
     ctx.globalAlpha = 1;
   }
-
-  ctx.lineWidth = 1.25 / view.scale;
-  for (const [color, path] of nestPaths(nest.shapes)) {
-    const layer = layers.get(color);
-    const alpha = layer && !layer.enabled ? 0.3 : 1;
-    ctx.strokeStyle = color;
-    if (layer?.mode === 'fill') {
-      ctx.fillStyle = color;
-      ctx.globalAlpha = alpha * 0.25;
-      ctx.fill(path, 'evenodd');
-    }
-    ctx.globalAlpha = alpha;
-    ctx.stroke(path);
-  }
-  ctx.globalAlpha = 1;
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 }
 
@@ -307,6 +276,8 @@ export interface RenderInput {
   readonly doc: LaserDocument;
   readonly selection: ReadonlySet<string>;
   readonly selectionBounds: Bounds | null;
+  /** The entered group path; shapes outside it are drawn dimmed. Must keep its identity while unchanged. */
+  readonly scope: GroupPath;
   readonly view: View;
   readonly bed: Bed;
   readonly widthPx: number;
@@ -317,8 +288,8 @@ export interface RenderInput {
   readonly marquee: { readonly a: Point; readonly b: Point } | null;
   /** When set, the job preview is drawn instead of the editable shapes. */
   readonly jobPreview: JobPreview | null;
-  /** When set (and there is no job preview), the nested sheet is drawn over the faded shapes. */
-  readonly nestPreview: NestPreviewInput | null;
+  /** When set, the nesting sheet is marked on the bed, under the shapes. */
+  readonly sheet: SheetInput | null;
 }
 
 export function renderScene(ctx: CanvasRenderingContext2D, input: RenderInput): void {
@@ -327,17 +298,14 @@ export function renderScene(ctx: CanvasRenderingContext2D, input: RenderInput): 
   ctx.fillStyle = COLORS.outside;
   ctx.fillRect(0, 0, input.widthPx, input.heightPx);
   drawBed(ctx, view, input.bed);
+  if (input.sheet) drawSheet(ctx, view, dpr, input.bed, input.sheet);
   if (input.jobPreview) {
     drawPreview(ctx, view, dpr, input.jobPreview);
     return;
   }
 
   // Shapes are drawn in document space so cached paths survive pan and zoom.
-  const paths = layerPaths(doc.shapes, selection);
-  if (input.nestPreview) {
-    drawNestPreview(ctx, input, input.nestPreview, paths);
-    return;
-  }
+  const { byColor: paths, scopeBounds } = layerPaths(doc.shapes, selection, input.scope);
   const enabled = new Map(doc.layers.map((layer) => [layer.color, layer]));
   ctx.lineJoin = 'round';
   for (const [color, entry] of paths) {
@@ -346,6 +314,13 @@ export function renderScene(ctx: CanvasRenderingContext2D, input: RenderInput): 
     const fill = layer?.mode === 'fill';
     ctx.strokeStyle = color;
     ctx.fillStyle = color;
+    if (entry.hasDimmed) {
+      ctx.setTransform(dpr * view.scale, 0, 0, dpr * view.scale, dpr * view.offsetX, dpr * view.offsetY);
+      ctx.lineWidth = 1 / view.scale;
+      ctx.setLineDash([]);
+      ctx.globalAlpha = alpha * DIMMED_ALPHA;
+      ctx.stroke(entry.dimmed);
+    }
     if (entry.hasNormal) {
       ctx.setTransform(dpr * view.scale, 0, 0, dpr * view.scale, dpr * view.offsetX, dpr * view.offsetY);
       ctx.lineWidth = 1.25 / view.scale;
@@ -378,6 +353,18 @@ export function renderScene(ctx: CanvasRenderingContext2D, input: RenderInput): 
   ctx.globalAlpha = 1;
   ctx.setLineDash([]);
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+  // The entered group: a dashed frame a little outside its bounds.
+  if (scopeBounds) {
+    const a = toScreen(view, { x: scopeBounds.minX, y: scopeBounds.minY });
+    const b = toScreen(view, { x: scopeBounds.maxX, y: scopeBounds.maxY });
+    const pad = SCOPE_FRAME_PAD_PX;
+    ctx.strokeStyle = COLORS.scope;
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([7, 4]);
+    ctx.strokeRect(Math.round(a.x - pad) + 0.5, Math.round(a.y - pad) + 0.5, Math.round(b.x - a.x + 2 * pad), Math.round(b.y - a.y + 2 * pad));
+    ctx.setLineDash([]);
+  }
 
   const bounds = input.selectionBounds;
   if (bounds) {

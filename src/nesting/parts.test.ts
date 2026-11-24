@@ -1,8 +1,17 @@
 import { describe, expect, it } from 'vitest';
 import { boundsOfPoints } from '../geometry/bounds';
 import type { Shape } from '../model/types';
-import { clampQuantity, findParts, partSources, sheetShapes, toNestParts } from './parts';
-import type { NestSheet } from './types';
+import {
+  clampQuantity,
+  findParts,
+  partSources,
+  placedSourceIds,
+  sameOptions,
+  sameParts,
+  sheetShapes,
+  toNestParts,
+} from './parts';
+import { DEFAULT_NEST_OPTIONS, type NestSheet } from './types';
 
 function rect(id: string, x: number, y: number, w: number, h: number, color = '#000000'): Shape {
   return {
@@ -36,6 +45,17 @@ function counter(prefix: string): () => string {
 }
 
 describe('findParts', () => {
+  it('finds parts by outline, whatever groups the shapes are in', () => {
+    // Two separate parts imported as one group, and a hole grouped apart from its outline.
+    const shapes: Shape[] = [
+      { ...rect('a', 0, 0, 40, 40), groups: ['file'] },
+      { ...rect('hole', 10, 10, 5, 5), groups: ['other'] },
+      { ...rect('b', 100, 0, 20, 20), groups: ['file'] },
+    ];
+    const parts = findParts(shapes);
+    expect(parts.map((part) => part.shapeIds)).toEqual([['a', 'hole'], ['b']]);
+  });
+
   it('returns nothing for an empty document', () => {
     expect(findParts([])).toEqual([]);
   });
@@ -207,11 +227,90 @@ describe('sheetShapes', () => {
     expect(placed[1]?.points[0]?.y).toBeCloseTo(10, 9);
   });
 
+  it('makes a group of every copy with several shapes when asked to', () => {
+    const grouped: Shape[] = [
+      { ...rect('outer', 10, 20, 40, 20), groups: ['file'] },
+      { ...line('mark', 15, 25, 30, 25), groups: ['file'] },
+      { ...rect('b', 200, 0, 10, 10), groups: ['file'] },
+    ];
+    const groupedSources = partSources(findParts(grouped), grouped);
+    const sheet: NestSheet = {
+      usedLengthMm: 0,
+      placements: [
+        { partId: 'outer', copy: 0, rotationDeg: 0, dx: -10, dy: -20 },
+        { partId: 'outer', copy: 1, rotationDeg: 0, dx: 90, dy: -20 },
+        { partId: 'b', copy: 0, rotationDeg: 0, dx: 0, dy: 100 },
+      ],
+    };
+    const placed = sheetShapes(sheet, groupedSources, counter('n'), counter('g'));
+    // One group per multi-shape copy; the single-shape copy stays ungrouped.
+    expect(placed.map((shape) => shape.groups)).toEqual([['g1'], ['g1'], ['g2'], ['g2'], undefined]);
+    expect('groups' in (placed[4] ?? {})).toBe(false);
+    expect(placed.map((shape) => shape.id)).toEqual(['n1', 'n2', 'n3', 'n4', 'n5']);
+    // Without a group id source nothing is grouped, and source groups are never carried over.
+    expect(sheetShapes(sheet, groupedSources, counter('n')).every((shape) => !('groups' in shape))).toBe(true);
+  });
+
   it('skips placements of parts it has no shapes for', () => {
     const sheet: NestSheet = {
       usedLengthMm: 0,
       placements: [{ partId: 'missing', copy: 0, rotationDeg: 0, dx: 0, dy: 0 }],
     };
     expect(sheetShapes(sheet, sources, counter('n'))).toEqual([]);
+  });
+});
+
+describe('placedSourceIds', () => {
+  const shapes = [rect('outer', 0, 0, 40, 20), rect('hole', 10, 5, 5, 5), rect('b', 100, 0, 10, 10), rect('c', 200, 0, 10, 10)];
+  const sources = partSources(findParts(shapes), shapes);
+  const place = (partId: string, copy = 0) => ({ partId, copy, rotationDeg: 0, dx: 0, dy: 0 });
+
+  it('lists every shape of the parts that were placed on any sheet, and nothing else', () => {
+    const sheets: NestSheet[] = [
+      { usedLengthMm: 0, placements: [place('outer'), place('outer', 1)] },
+      { usedLengthMm: 0, placements: [place('b')] },
+    ];
+    // Part c was left out or did not fit: its original stays.
+    expect([...placedSourceIds(sheets, sources)].sort()).toEqual(['b', 'hole', 'outer']);
+  });
+
+  it('is empty without sheets and ignores parts it has no shapes for', () => {
+    expect(placedSourceIds([], sources).size).toBe(0);
+    expect(placedSourceIds([{ usedLengthMm: 0, placements: [place('missing')] }], sources).size).toBe(0);
+  });
+});
+
+describe('sameParts and sameOptions', () => {
+  const groups = findParts([rect('a', 0, 0, 40, 20), rect('b', 100, 0, 10, 10)]);
+  const partsFor = (settings: Record<string, { quantity: number; canRotate: boolean }>) =>
+    toNestParts(groups, (id) => settings[id]);
+
+  it('finds the same request in two lists built from the same parts', () => {
+    expect(sameParts(partsFor({}), partsFor({}))).toBe(true);
+    const locked = { a: { quantity: 3, canRotate: false } };
+    expect(sameParts(partsFor(locked), partsFor({ ...locked }))).toBe(true);
+  });
+
+  it('notices a changed quantity, rotation lock, left-out part, order or outline', () => {
+    const base = partsFor({});
+    expect(sameParts(base, partsFor({ a: { quantity: 2, canRotate: true } }))).toBe(false);
+    expect(sameParts(base, partsFor({ b: { quantity: 1, canRotate: false } }))).toBe(false);
+    expect(sameParts(base, partsFor({ b: { quantity: 0, canRotate: true } }))).toBe(false);
+    expect(sameParts(base, [...base].reverse())).toBe(false);
+    const moved = toNestParts(findParts([rect('a', 1, 0, 40, 20), rect('b', 100, 0, 10, 10)]), () => undefined);
+    expect(sameParts(base, moved)).toBe(false);
+  });
+
+  it('compares every option', () => {
+    expect(sameOptions(DEFAULT_NEST_OPTIONS, { ...DEFAULT_NEST_OPTIONS })).toBe(true);
+    const changes = [
+      { sheetWidthMm: 500 },
+      { sheetHeightMm: 300 },
+      { marginMm: 0 },
+      { spacingMm: 1 },
+      { rotationStepDeg: 0 },
+      { useHoles: false },
+    ];
+    for (const change of changes) expect(sameOptions(DEFAULT_NEST_OPTIONS, { ...DEFAULT_NEST_OPTIONS, ...change })).toBe(false);
   });
 });

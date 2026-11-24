@@ -190,6 +190,17 @@ button.primary:hover:not(:disabled) {
   font-variant-numeric: tabular-nums;
 }
 
+.panel-step {
+  display: inline-block;
+  min-width: 1.25em;
+  margin-right: 0.45em;
+  border-radius: 0.65em;
+  background: var(--control-hover);
+  color: #e6e8eb;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
 .panel-empty {
   margin: 0;
   color: var(--muted);
@@ -334,7 +345,7 @@ button.primary:hover:not(:disabled) {
   display: flex;
   flex-direction: column;
   gap: 0.3rem;
-  max-height: 11rem;
+  max-height: 7.4rem;
   overflow-y: auto;
 }
 
@@ -351,6 +362,25 @@ button.primary:hover:not(:disabled) {
   text-overflow: ellipsis;
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
+}
+
+.nest-options {
+  gap: 0.7rem;
+}
+
+.nest-options > .check {
+  flex: none;
+  white-space: nowrap;
+}
+
+.nest-status {
+  margin: 0;
+  line-height: 1.35;
+  font-variant-numeric: tabular-nums;
+}
+
+.nest-hint {
+  font-size: 0.92em;
 }
 
 .nest-switcher > button {
@@ -423,4 +453,8 @@ input[type='range'] {
 
 .status-error {
   color: var(--error);
+}
+
+.status-scope {
+  color: var(--accent);
 }
