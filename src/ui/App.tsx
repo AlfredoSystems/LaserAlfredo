@@ -6,6 +6,7 @@ import { boundsOfShapes } from '../model/selection';
 import { JobPanel } from './JobPanel';
 import { useJobStore } from './jobStore';
 import { LayersPanel } from './LayersPanel';
+import { MaterialTestDialog, useMaterialTestStore } from './MaterialTestDialog';
 import { NestingPanel } from './NestingPanel';
 import { useNestStore } from './nestStore';
 import { NumberField } from './NumberField';
@@ -70,6 +71,14 @@ function Toolbar() {
           void importFiles(files);
         }}
       />
+      <button
+        type="button"
+        title="Add a grid of squares cut at different speeds, powers or passes"
+        data-testid="material-test-open"
+        onClick={() => useMaterialTestStore.getState().setOpen(true)}
+      >
+        Material test…
+      </button>
       <span className="toolbar-gap" />
       <button type="button" disabled={!canUndo} onClick={undo} title="Undo (Ctrl+Z)">
         Undo
@@ -238,6 +247,7 @@ function SidebarTabs() {
 
 export function App() {
   const [dropping, setDropping] = useState(false);
+  const materialTestOpen = useMaterialTestStore((state) => state.open);
 
   const onDrop = (event: DragEvent<HTMLDivElement>) => {
     event.preventDefault();
@@ -274,6 +284,7 @@ export function App() {
         </aside>
       </div>
       <StatusBar />
+      {materialTestOpen && <MaterialTestDialog />}
     </div>
   );
 }

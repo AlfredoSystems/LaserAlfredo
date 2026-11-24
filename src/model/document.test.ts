@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
   addShapes,
+  addShapesWithLayers,
+  clampCutSettings,
+  countLayerShapes,
   defaultLayer,
   EMPTY_DOCUMENT,
   nearestPaletteColor,
@@ -12,7 +15,7 @@ import {
   updateLayer,
 } from './document';
 import { translation } from './transform';
-import type { Shape } from './types';
+import type { Shape, ShapeCutSettings } from './types';
 
 function counter(): () => string {
   let n = 0;
@@ -164,5 +167,105 @@ describe('updateLayer', () => {
     doc = updateLayer(base, '#ff0000', { passes: 0, speedMmS: 0 });
     expect(doc.layers[0]?.passes).toBe(1);
     expect(doc.layers[0]?.speedMmS).toBe(0.1);
+  });
+});
+
+describe('per-shape cut settings', () => {
+  const settings: ShapeCutSettings = { speedMmS: 35, maxPowerPct: 40, minPowerPct: 40, passes: 2 };
+  const cell = (id: string, color: string): Shape => ({ ...square(id, color), settings });
+
+  it('keeps them through add, transform and remove', () => {
+    let doc = addShapes(EMPTY_DOCUMENT, [cell('a', '#ff0000'), square('b', '#ff0000')]);
+    expect(doc.shapes[0]?.settings).toBe(settings);
+    doc = transformShapes(doc, new Set(['a', 'b']), translation(5, 5));
+    expect(doc.shapes[0]?.settings).toBe(settings);
+    expect(doc.shapes[0]?.points[0]).toEqual({ x: 5, y: 5 });
+    expect(doc.shapes[1]?.settings).toBeUndefined();
+    doc = removeShapes(doc, new Set(['b']));
+    expect(doc.shapes).toHaveLength(1);
+    expect(doc.shapes[0]?.settings).toBe(settings);
+  });
+
+  it('drops them when the shape moves to another layer', () => {
+    const doc = addShapes(EMPTY_DOCUMENT, [cell('a', '#ff0000'), cell('b', '#ff0000')]);
+    const moved = setShapesColor(doc, new Set(['a']), '#0000ff');
+    expect(moved.shapes[0]).toEqual(square('a', '#0000ff'));
+    expect('settings' in (moved.shapes[0] ?? {})).toBe(false);
+    // The shape that stayed keeps its own.
+    expect(moved.shapes[1]?.settings).toBe(settings);
+  });
+
+  it('leaves them alone when the shape is moved to the colour it already has', () => {
+    const doc = addShapes(EMPTY_DOCUMENT, [cell('a', '#ff0000')]);
+    const same = setShapesColor(doc, new Set(['a']), '#FF0000');
+    expect(same.shapes[0]).toBe(doc.shapes[0]);
+    expect(same.shapes[0]?.settings).toBe(settings);
+  });
+
+  it('are not touched by a change to the layer', () => {
+    const doc = updateLayer(addShapes(EMPTY_DOCUMENT, [cell('a', '#ff0000')]), '#ff0000', { speedMmS: 99, passes: 7 });
+    expect(doc.shapes[0]?.settings).toBe(settings);
+  });
+
+  it('clamps settings the way layer values are clamped', () => {
+    const fallback = { speedMmS: 20, maxPowerPct: 30, minPowerPct: 20, passes: 1 };
+    expect(clampCutSettings({ speedMmS: 5000, maxPowerPct: 140, minPowerPct: -5, passes: 250 }, fallback)).toEqual({
+      speedMmS: 2000,
+      maxPowerPct: 100,
+      minPowerPct: 0,
+      passes: 100,
+    });
+    expect(clampCutSettings({ speedMmS: 0, maxPowerPct: 40, minPowerPct: 90, passes: 2.6 }, fallback)).toEqual({
+      speedMmS: 0.1,
+      maxPowerPct: 40,
+      minPowerPct: 40,
+      passes: 3,
+    });
+    expect(
+      clampCutSettings({ speedMmS: Number.NaN, maxPowerPct: Infinity, minPowerPct: Number.NaN, passes: Number.NaN }, fallback),
+    ).toEqual(fallback);
+    expect(clampCutSettings(settings, fallback)).toEqual(settings);
+  });
+
+  it('counts the shapes of each layer and those with their own settings', () => {
+    const counts = countLayerShapes([cell('a', '#ff0000'), square('b', '#ff0000'), cell('c', '#0000ff'), cell('d', '#0000ff')]);
+    expect(counts.get('#ff0000')).toEqual({ shapes: 2, withSettings: 1 });
+    expect(counts.get('#0000ff')).toEqual({ shapes: 2, withSettings: 2 });
+    expect(counts.get('#000000')).toBeUndefined();
+  });
+});
+
+describe('addShapesWithLayers', () => {
+  const patch = { speedMmS: 100, maxPowerPct: 12, minPowerPct: 12, passes: 1 };
+
+  it('creates the layer with the given settings and leaves the other new layer at the defaults', () => {
+    const doc = addShapesWithLayers(EMPTY_DOCUMENT, [square('a', '#008060'), square('b', '#a04000')], [{ color: '#008060', patch }]);
+    expect(doc.shapes.map((shape) => shape.id)).toEqual(['a', 'b']);
+    expect(doc.layers).toEqual([{ ...defaultLayer('#008060'), ...patch }, defaultLayer('#a04000')]);
+  });
+
+  it('updates a layer that already exists, keeping what the patch does not name', () => {
+    let doc = addShapes(EMPTY_DOCUMENT, [square('a', '#008060')]);
+    doc = updateLayer(doc, '#008060', { kerfMm: 0.2, enabled: false, speedMmS: 5 });
+    doc = addShapesWithLayers(doc, [square('b', '#008060')], [{ color: '#008060', patch }]);
+    expect(doc.layers).toEqual([{ ...defaultLayer('#008060'), ...patch, kerfMm: 0.2, enabled: false }]);
+  });
+
+  it('clamps the settings and ignores a colour no shape uses', () => {
+    const doc = addShapesWithLayers(
+      EMPTY_DOCUMENT,
+      [square('a', '#008060')],
+      [
+        { color: '#008060', patch: { speedMmS: 9999, maxPowerPct: 150, minPowerPct: 150 } },
+        { color: '#123456', patch },
+      ],
+    );
+    expect(doc.layers).toHaveLength(1);
+    expect(doc.layers[0]).toMatchObject({ speedMmS: 2000, maxPowerPct: 100, minPowerPct: 100 });
+  });
+
+  it('changes nothing when there are no shapes', () => {
+    const doc = addShapes(EMPTY_DOCUMENT, [square('a', '#008060')]);
+    expect(addShapesWithLayers(doc, [], [{ color: '#008060', patch }])).toBe(doc);
   });
 });

@@ -5,6 +5,7 @@ import { HL1060_BED } from '../model/bed';
 import { copyShapes, PASTE_OFFSET_MM, pasteShapes, type PasteTarget } from '../model/clipboard';
 import {
   addShapes,
+  addShapesWithLayers,
   EMPTY_DOCUMENT,
   nearestPaletteColor,
   normalizeColor,
@@ -28,6 +29,7 @@ import {
   unitsInRect,
   type GroupPath,
 } from '../model/groups';
+import { buildMaterialTest, type MaterialTestOptions } from '../model/materialTest';
 import { boundsOfShapes } from '../model/selection';
 import { applyToPoints, translation, type Matrix } from '../model/transform';
 import type { Bounds, LaserDocument, Point, Shape } from '../model/types';
@@ -80,6 +82,12 @@ export interface AppState {
   readonly fitTarget: Bounds | null;
 
   importText(fileName: string, text: string): void;
+  /**
+   * Adds a material test grid with its top-left corner at `origin`, as one
+   * undo step, selected as one group at top level. The view is left alone.
+   * Returns false, and changes nothing, when the options allow no grid.
+   */
+  addMaterialTest(options: MaterialTestOptions, origin: Point): boolean;
   select(ids: Iterable<string>): void;
   /** Selects the unit (the shape, or its whole group in the current scope) the shape belongs to. */
   selectUnit(shapeId: string): void;
@@ -238,6 +246,16 @@ export const useAppStore = create<AppState>((set, get) => {
         const message = error instanceof Error ? error.message : String(error);
         set({ notice: { kind: 'error', text: `${fileName}: import failed — ${message}` } });
       }
+    },
+
+    addMaterialTest(options, origin) {
+      const test = buildMaterialTest(options, { origin, nextShapeId: nextId, groupId: nextGroupId() });
+      if (!test || test.shapes.length === 0) return false;
+      commit(addShapesWithLayers(get().doc, test.shapes, test.layers), {
+        selection: new Set(test.shapes.map((shape) => shape.id)),
+        scope: TOP_LEVEL,
+      });
+      return true;
     },
 
     select(ids) {

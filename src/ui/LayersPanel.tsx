@@ -1,7 +1,15 @@
 import { useMemo } from 'react';
+import { countLayerShapes } from '../model/document';
+import { MATERIAL_TEST_CELL_COLOR, MATERIAL_TEST_LABEL_COLOR } from '../model/materialTest';
 import type { LayerMode } from '../model/types';
 import { NumberField } from './NumberField';
 import { useAppStore } from './store';
+
+/** What the reserved colours are for, added to their swatch's tooltip. */
+const SPECIAL_LAYERS: Readonly<Record<string, string>> = {
+  [MATERIAL_TEST_CELL_COLOR]: ' (material test cells)',
+  [MATERIAL_TEST_LABEL_COLOR]: ' (material test labels)',
+};
 
 export function LayersPanel() {
   const layers = useAppStore((state) => state.doc.layers);
@@ -9,11 +17,7 @@ export function LayersPanel() {
   const patchLayer = useAppStore((state) => state.patchLayer);
   const selectLayer = useAppStore((state) => state.selectLayer);
 
-  const counts = useMemo(() => {
-    const map = new Map<string, number>();
-    for (const shape of shapes) map.set(shape.color, (map.get(shape.color) ?? 0) + 1);
-    return map;
-  }, [shapes]);
+  const counts = useMemo(() => countLayerShapes(shapes), [shapes]);
 
   return (
     <section className="panel panel-grow" aria-label="Layers">
@@ -22,7 +26,24 @@ export function LayersPanel() {
       </h2>
       {layers.length === 0 && <p className="panel-empty">Import a DXF or SVG to get started.</p>}
       <ul className="layers">
-        {layers.map((layer) => (
+        {layers.map((layer) => {
+          const count = counts.get(layer.color)?.shapes ?? 0;
+          const ownSettings = counts.get(layer.color)?.withSettings ?? 0;
+          // Every shape brings its own speed, power and passes: the layer's would do nothing.
+          const perShape = count > 0 && ownSettings === count;
+          const kerfField = (
+            <NumberField
+              label="Kerf mm"
+              title="Width of the laser cut in mm. Outlines grow and holes shrink by half of it. 0 = off."
+              testId="layer-kerf"
+              value={layer.kerfMm}
+              min={0}
+              max={2}
+              decimals={3}
+              onCommit={(kerfMm) => patchLayer(layer.color, { kerfMm })}
+            />
+          );
+          return (
           <li key={layer.color} className="layer" data-testid="layer-row">
             <div className="layer-head">
               <input
@@ -36,7 +57,7 @@ export function LayersPanel() {
                 type="button"
                 className="swatch"
                 style={{ background: layer.color }}
-                title="Select everything on this layer"
+                title={`Select everything on this layer${SPECIAL_LAYERS[layer.color] ?? ''}`}
                 aria-label={`Select layer ${layer.color}`}
                 onClick={() => selectLayer(layer.color)}
               />
@@ -49,9 +70,17 @@ export function LayersPanel() {
                 <option value="fill">Fill</option>
               </select>
               <span className="layer-count">
-                {counts.get(layer.color) ?? 0} {counts.get(layer.color) === 1 ? 'shape' : 'shapes'}
+                {count} {count === 1 ? 'shape' : 'shapes'}
               </span>
             </div>
+            {perShape ? (
+              <>
+                <p className="layer-note" data-testid="layer-note">
+                  Material test — settings are per cell
+                </p>
+                <div className="field-grid">{kerfField}</div>
+              </>
+            ) : (
             <div className="field-grid">
               <NumberField
                 label="Speed mm/s"
@@ -90,19 +119,17 @@ export function LayersPanel() {
                 decimals={1}
                 onCommit={(minPowerPct) => patchLayer(layer.color, { minPowerPct })}
               />
-              <NumberField
-                label="Kerf mm"
-                title="Width of the laser cut in mm. Outlines grow and holes shrink by half of it. 0 = off."
-                testId="layer-kerf"
-                value={layer.kerfMm}
-                min={0}
-                max={2}
-                decimals={3}
-                onCommit={(kerfMm) => patchLayer(layer.color, { kerfMm })}
-              />
+              {kerfField}
             </div>
+            )}
+            {!perShape && ownSettings > 0 && (
+              <p className="layer-note" data-testid="layer-note">
+                {ownSettings} {ownSettings === 1 ? 'shape uses its' : 'shapes use their'} own settings
+              </p>
+            )}
           </li>
-        ))}
+          );
+        })}
       </ul>
     </section>
   );

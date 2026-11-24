@@ -154,7 +154,14 @@ export function sheetShapes(
     const m = placementMatrix(placement);
     const groups = nextGroupId && source.length > 1 ? [nextGroupId()] : null;
     for (const shape of source) {
-      const copy: Shape = { id: nextId(), color: shape.color, closed: shape.closed, points: applyToPoints(m, shape.points) };
+      const copy: Shape = {
+        id: nextId(),
+        color: shape.color,
+        closed: shape.closed,
+        points: applyToPoints(m, shape.points),
+        // A copy is cut the way its original is: a shape's own settings travel with it.
+        ...(shape.settings ? { settings: shape.settings } : {}),
+      };
       shapes.push(groups ? { ...copy, groups } : copy);
     }
   }

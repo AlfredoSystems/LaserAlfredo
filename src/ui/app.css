@@ -458,3 +458,133 @@ input[type='range'] {
 .status-scope {
   color: var(--accent);
 }
+
+.layer-note,
+.cell-settings {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.35;
+}
+
+.cell-settings {
+  color: inherit;
+  font-variant-numeric: tabular-nums;
+}
+
+.dialog {
+  width: min(44rem, calc(100vw - 2rem));
+  max-height: calc(100vh - 2rem);
+  box-sizing: border-box;
+  padding: 1rem 1.1rem;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel);
+  color: inherit;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+}
+
+.dialog[open] {
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+}
+
+.dialog::backdrop {
+  background: rgba(0, 0, 0, 0.55);
+}
+
+.dialog-title {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.dialog-intro,
+.dialog-summary {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.35;
+}
+
+.dialog-summary {
+  color: inherit;
+  font-variant-numeric: tabular-nums;
+}
+
+.dialog-columns {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.7rem;
+}
+
+.dialog-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  min-width: 0;
+  margin: 0;
+  padding: 0.5rem 0.6rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.dialog-group legend {
+  padding: 0 0.3rem;
+  color: var(--muted);
+}
+
+.dialog-group .field {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.15rem;
+}
+
+.dialog-group .field-input,
+.dialog-group .field-select {
+  box-sizing: border-box;
+  flex: none;
+  width: 100%;
+}
+
+.dialog-group .row {
+  align-items: flex-end;
+  gap: 0.6rem;
+}
+
+.dialog-group .row > .check {
+  flex: 3;
+  padding-bottom: 0.3rem;
+}
+
+.dialog-group .row > .field {
+  flex: 2;
+}
+
+.field-grid-3 {
+  grid-template-columns: 1fr 1fr 1fr;
+}
+
+.dialog-messages {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  gap: 0.4rem;
+  height: 6.9rem;
+  overflow-y: auto;
+}
+
+.dialog-buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+.dialog-buttons > button {
+  min-width: 5.5rem;
+}
+
+@media (max-width: 40rem) {
+  .dialog-columns {
+    grid-template-columns: 1fr;
+  }
+}

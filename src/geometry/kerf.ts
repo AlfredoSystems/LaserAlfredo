@@ -57,12 +57,13 @@ function offsetContour(points: readonly Point[], deltaMm: number): Point[][] | n
  * collapses to nothing is dropped. Open paths, closed paths with fewer than 3
  * points and contours that cannot be offset pass through unchanged. A kerf
  * that is zero, negative or not finite returns the input paths unchanged.
+ * Whatever else a path carries besides its points is kept on its result.
  */
-export function applyKerf(paths: readonly Polyline[], kerfMm: number): Polyline[] {
+export function applyKerf<T extends Polyline>(paths: readonly T[], kerfMm: number): T[] {
   if (!Number.isFinite(kerfMm) || kerfMm <= 0) return [...paths];
   const half = kerfMm / 2;
   const depths = containmentDepths(paths);
-  const result: Polyline[] = [];
+  const result: T[] = [];
   for (let i = 0; i < paths.length; i++) {
     const path = paths[i];
     if (path === undefined) continue;
