@@ -283,3 +283,33 @@ block (100 % is possible) open at 85 % and reach 94 % after 400 layouts.
   that crosses the outline is honoured only where it lies inside.
 - Jobs wider than about 30 km at 1 mm resolution are refused (everything is
   reported unplaced).
+
+## In the app
+
+`src/ui/nestStore.ts` runs the search (1–4 workers with different seeds, the
+lowest fitness wins) and puts the result straight into the document. There is
+no preview and no apply step.
+
+- **One undo step.** The first layout replaces the parts through
+  `commitDocument`; every better layout, every sheet switch and every "Nest
+  again" swaps that document through `amendDocument`, which adds no history
+  entry and only works on the very document the nest put there. So one Ctrl+Z
+  from a nested document always returns to the original parts, never to an
+  earlier layout.
+- **What the nested document is.** The document from before Nest (the
+  *base*), minus the originals of every part that has a copy on any sheet,
+  plus the copies of the sheet on the bed. Parts with quantity 0 and parts
+  that fit no sheet keep their originals where they were.
+- **Session.** From the press on Nest until something else changes the
+  document. During it the panel lists the original parts, and "Nest again"
+  nests those: with changed settings the next layout replaces the current one
+  ("Out of date" until then), with unchanged settings it searches on with new
+  seeds and only a better layout replaces it.
+- **Leaving it.** Any other document change (move, delete, paste, import,
+  colour, layer settings, undo) stops the search and returns the panel to its
+  normal state; the sheet on the bed stays as ordinary shapes. The session is
+  kept for as long as undo or redo can bring its document back, and carries
+  on when they do (the search does not restart). Undoing the nest also
+  restores the selection the parts were taken from.
+- The search stops by itself 20 s after the last improvement, or when every
+  worker has tried all layouts.

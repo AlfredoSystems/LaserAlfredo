@@ -14,7 +14,7 @@ import type { Bounds, Point, Shape } from '../model/types';
 import { fitBounds, panBy, toDocument, toScreen, zoomAt, type View } from '../model/view';
 import { HANDLE_SIZE_PX, renderScene, rotateHandleScreen } from './scene/render';
 import { useJobStore } from './jobStore';
-import { nestPreview, useNestStore } from './nestStore';
+import { sheetOutline, useNestStore } from './nestStore';
 import { BED_BOUNDS, useAppStore } from './store';
 
 const PICK_TOLERANCE_PX = 6;
@@ -56,9 +56,8 @@ export function Workspace() {
       return selection.size === 0 ? null : boundsOfShapes(doc.shapes, selection);
     };
 
-    /** The job preview and the nesting result are read-only: no picking, dragging or editing keys. */
-    const readOnly = (): boolean =>
-      useJobStore.getState().preview || nestPreview(useNestStore.getState()) !== null;
+    /** The job preview is read-only: no picking, dragging or editing keys. */
+    const readOnly = (): boolean => useJobStore.getState().preview;
 
     /** The topmost shape under the point that can be picked in the current scope. */
     const pickInScope = (point: Point): Shape | null => {
@@ -86,7 +85,7 @@ export function Workspace() {
           job.preview && job.built
             ? { segments: job.segments, colors: job.built.job.layers.map((layer) => layer.color), fraction: job.fraction }
             : null,
-        nestPreview: nestPreview(useNestStore.getState()),
+        sheet: sheetOutline(useNestStore.getState()),
       });
     };
     const requestDraw = () => {
@@ -153,7 +152,7 @@ export function Workspace() {
       const point = toDocument(view, screen);
       const store = useAppStore.getState();
 
-      // The previews are read-only: every drag pans.
+      // The job preview is read-only: every drag pans.
       const panOnly = readOnly();
       if (event.button === 1 || event.button === 2 || (event.button === 0 && (spaceDown || panOnly))) {
         drag = { kind: 'pan', last: screen };
@@ -320,8 +319,6 @@ export function Workspace() {
         event.preventDefault();
       } else if (useJobStore.getState().preview) {
         if (key === 'escape') useJobStore.getState().setPreview(false);
-      } else if (readOnly() && !(mod && (key === 'z' || key === 'y'))) {
-        // A nesting result is on show: only undo and redo get through.
       } else if (key === 'escape') {
         if (drag) finishDrag(false);
         else if (store.scope.length > 0) store.leaveGroup();
@@ -385,6 +382,9 @@ export function Workspace() {
         fit(state.fitTarget);
       }
       if (state.doc !== previous.doc || state.selection !== previous.selection || state.scope !== previous.scope) {
+        // A drag commits only when it ends, so a document that changes under one (a better
+        // nest arriving, undo) is not the one it started on: the drag is dropped.
+        if (state.doc !== previous.doc && drag && drag.kind !== 'pan' && drag.kind !== 'marquee') finishDrag(false);
         requestDraw();
       }
     });
@@ -399,16 +399,14 @@ export function Workspace() {
       }
     });
 
-    // The nest preview is derived from these fields; repaint when any of them changes.
+    // The sheet outline is derived from these fields; repaint when any of them changes.
     const unsubscribeNest = useNestStore.subscribe((state, previous) => {
       if (
-        state.result !== previous.result ||
-        state.sheetIndex !== previous.sheetIndex ||
         state.panelOpen !== previous.panelOpen ||
-        state.applied !== previous.applied
+        state.options !== previous.options ||
+        state.result !== previous.result ||
+        state.shown !== previous.shown
       ) {
-        // A drag cannot carry on once the canvas turns read-only.
-        if (drag && drag.kind !== 'pan' && readOnly()) finishDrag(false);
         requestDraw();
       }
     });

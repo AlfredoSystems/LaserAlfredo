@@ -238,64 +238,20 @@ function drawPreview(ctx: CanvasRenderingContext2D, view: View, dpr: number, pre
   ctx.fill();
 }
 
-/** A nesting result on show: the placed shapes of one sheet, in bed coordinates. */
-export interface NestPreviewInput {
-  /** Must keep its identity while the layout is unchanged; the paths are cached on it. */
-  readonly shapes: readonly Shape[];
-  readonly sheetWidthMm: number;
-  readonly sheetHeightMm: number;
+/** The sheet being nested on. Its top-left corner is the bed's. */
+export interface SheetInput {
+  readonly widthMm: number;
+  readonly heightMm: number;
   readonly marginMm: number;
 }
 
-let nestCache: { readonly shapes: readonly Shape[]; readonly byColor: Map<string, Path2D> } | null = null;
-
-/** One Path2D per layer colour, rebuilt only when a different layout arrives. */
-function nestPaths(shapes: readonly Shape[]): Map<string, Path2D> {
-  if (nestCache && nestCache.shapes === shapes) return nestCache.byColor;
-  const byColor = new Map<string, Path2D>();
-  for (const shape of shapes) {
-    let path = byColor.get(shape.color);
-    if (!path) {
-      path = new Path2D();
-      byColor.set(shape.color, path);
-    }
-    tracePath(path, shape);
-  }
-  nestCache = { shapes, byColor };
-  return byColor;
-}
-
-/** Draws the nested sheet over the faded document. The sheet's top-left corner is the bed's. */
-function drawNestPreview(
-  ctx: CanvasRenderingContext2D,
-  input: RenderInput,
-  nest: NestPreviewInput,
-  docPaths: Map<string, LayerPaths>,
-): void {
-  const { view, dpr, bed } = input;
-  const toDocumentSpace = () =>
-    ctx.setTransform(dpr * view.scale, 0, 0, dpr * view.scale, dpr * view.offsetX, dpr * view.offsetY);
-  const layers = new Map(input.doc.layers.map((layer) => [layer.color, layer]));
-  ctx.lineJoin = 'round';
+/** Shades the part of the bed that is not sheet, outlines the sheet and dashes its margin. */
+function drawSheet(ctx: CanvasRenderingContext2D, view: View, dpr: number, bed: Bed, sheet: SheetInput): void {
+  ctx.setTransform(dpr * view.scale, 0, 0, dpr * view.scale, dpr * view.offsetX, dpr * view.offsetY);
   ctx.setLineDash([]);
-
-  // The document's own shapes, faint and without selection marks.
-  toDocumentSpace();
-  ctx.lineWidth = 1 / view.scale;
-  ctx.globalAlpha = 0.18;
-  for (const [color, entry] of docPaths) {
-    ctx.strokeStyle = color;
-    if (entry.hasNormal) ctx.stroke(entry.normal);
-    if (entry.hasSelected) ctx.stroke(entry.selected);
-    if (entry.hasDimmed) ctx.stroke(entry.dimmed);
-  }
-  ctx.globalAlpha = 1;
-
-  // Shade the part of the bed that is not sheet, then outline the sheet.
-  const w = Math.min(nest.sheetWidthMm, bed.widthMm);
-  const h = Math.min(nest.sheetHeightMm, bed.heightMm);
-  const smaller = w < bed.widthMm || h < bed.heightMm;
-  if (smaller) {
+  const w = Math.min(sheet.widthMm, bed.widthMm);
+  const h = Math.min(sheet.heightMm, bed.heightMm);
+  if (w < bed.widthMm || h < bed.heightMm) {
     ctx.fillStyle = COLORS.offSheet;
     ctx.fillRect(w, 0, bed.widthMm - w, h);
     ctx.fillRect(0, h, bed.widthMm, bed.heightMm - h);
@@ -303,7 +259,7 @@ function drawNestPreview(
     ctx.lineWidth = 1.5 / view.scale;
     ctx.strokeRect(0, 0, w, h);
   }
-  const margin = nest.marginMm;
+  const margin = sheet.marginMm;
   if (margin > 0 && w > 2 * margin && h > 2 * margin) {
     ctx.strokeStyle = COLORS.sheetBorder;
     ctx.globalAlpha = 0.6;
@@ -313,21 +269,6 @@ function drawNestPreview(
     ctx.setLineDash([]);
     ctx.globalAlpha = 1;
   }
-
-  ctx.lineWidth = 1.25 / view.scale;
-  for (const [color, path] of nestPaths(nest.shapes)) {
-    const layer = layers.get(color);
-    const alpha = layer && !layer.enabled ? 0.3 : 1;
-    ctx.strokeStyle = color;
-    if (layer?.mode === 'fill') {
-      ctx.fillStyle = color;
-      ctx.globalAlpha = alpha * 0.25;
-      ctx.fill(path, 'evenodd');
-    }
-    ctx.globalAlpha = alpha;
-    ctx.stroke(path);
-  }
-  ctx.globalAlpha = 1;
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 }
 
@@ -347,8 +288,8 @@ export interface RenderInput {
   readonly marquee: { readonly a: Point; readonly b: Point } | null;
   /** When set, the job preview is drawn instead of the editable shapes. */
   readonly jobPreview: JobPreview | null;
-  /** When set (and there is no job preview), the nested sheet is drawn over the faded shapes. */
-  readonly nestPreview: NestPreviewInput | null;
+  /** When set, the nesting sheet is marked on the bed, under the shapes. */
+  readonly sheet: SheetInput | null;
 }
 
 export function renderScene(ctx: CanvasRenderingContext2D, input: RenderInput): void {
@@ -357,6 +298,7 @@ export function renderScene(ctx: CanvasRenderingContext2D, input: RenderInput): 
   ctx.fillStyle = COLORS.outside;
   ctx.fillRect(0, 0, input.widthPx, input.heightPx);
   drawBed(ctx, view, input.bed);
+  if (input.sheet) drawSheet(ctx, view, dpr, input.bed, input.sheet);
   if (input.jobPreview) {
     drawPreview(ctx, view, dpr, input.jobPreview);
     return;
@@ -364,10 +306,6 @@ export function renderScene(ctx: CanvasRenderingContext2D, input: RenderInput): 
 
   // Shapes are drawn in document space so cached paths survive pan and zoom.
   const { byColor: paths, scopeBounds } = layerPaths(doc.shapes, selection, input.scope);
-  if (input.nestPreview) {
-    drawNestPreview(ctx, input, input.nestPreview, paths);
-    return;
-  }
   const enabled = new Map(doc.layers.map((layer) => [layer.color, layer]));
   ctx.lineJoin = 'round';
   for (const [color, entry] of paths) {

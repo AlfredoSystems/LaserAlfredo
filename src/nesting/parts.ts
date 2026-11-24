@@ -3,7 +3,7 @@ import { containmentParents } from '../geometry/containment';
 import { applyToPoints } from '../model/transform';
 import type { Point, Shape } from '../model/types';
 import { placementMatrix } from './placement';
-import type { NestPart, NestSheet } from './types';
+import type { NestOptions, NestPart, NestSheet } from './types';
 
 /** Document shapes that are cut out, and move, as one piece. */
 export interface PartGroup {
@@ -159,4 +159,51 @@ export function sheetShapes(
     }
   }
   return shapes;
+}
+
+/**
+ * Ids of the source shapes of every part that has at least one copy on any of
+ * the sheets: the originals a nested layout stands in for. Parts that were
+ * left out, or fit no sheet, keep their originals.
+ */
+export function placedSourceIds(
+  sheets: readonly NestSheet[],
+  sources: ReadonlyMap<string, readonly Shape[]>,
+): Set<string> {
+  const ids = new Set<string>();
+  const seen = new Set<string>();
+  for (const sheet of sheets) {
+    for (const placement of sheet.placements) {
+      if (seen.has(placement.partId)) continue;
+      seen.add(placement.partId);
+      for (const shape of sources.get(placement.partId) ?? []) ids.add(shape.id);
+    }
+  }
+  return ids;
+}
+
+/** True when both lists ask for the same copies of the same outlines, in the same order. */
+export function sameParts(a: readonly NestPart[], b: readonly NestPart[]): boolean {
+  if (a.length !== b.length) return false;
+  return a.every((part, index) => {
+    const other = b[index];
+    return (
+      other !== undefined &&
+      part.id === other.id &&
+      part.outline === other.outline &&
+      part.quantity === other.quantity &&
+      part.canRotate === other.canRotate
+    );
+  });
+}
+
+export function sameOptions(a: NestOptions, b: NestOptions): boolean {
+  return (
+    a.sheetWidthMm === b.sheetWidthMm &&
+    a.sheetHeightMm === b.sheetHeightMm &&
+    a.marginMm === b.marginMm &&
+    a.spacingMm === b.spacingMm &&
+    a.rotationStepDeg === b.rotationStepDeg &&
+    a.useHoles === b.useHoles
+  );
 }

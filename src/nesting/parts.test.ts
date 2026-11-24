@@ -1,8 +1,17 @@
 import { describe, expect, it } from 'vitest';
 import { boundsOfPoints } from '../geometry/bounds';
 import type { Shape } from '../model/types';
-import { clampQuantity, findParts, partSources, sheetShapes, toNestParts } from './parts';
-import type { NestSheet } from './types';
+import {
+  clampQuantity,
+  findParts,
+  partSources,
+  placedSourceIds,
+  sameOptions,
+  sameParts,
+  sheetShapes,
+  toNestParts,
+} from './parts';
+import { DEFAULT_NEST_OPTIONS, type NestSheet } from './types';
 
 function rect(id: string, x: number, y: number, w: number, h: number, color = '#000000'): Shape {
   return {
@@ -248,5 +257,60 @@ describe('sheetShapes', () => {
       placements: [{ partId: 'missing', copy: 0, rotationDeg: 0, dx: 0, dy: 0 }],
     };
     expect(sheetShapes(sheet, sources, counter('n'))).toEqual([]);
+  });
+});
+
+describe('placedSourceIds', () => {
+  const shapes = [rect('outer', 0, 0, 40, 20), rect('hole', 10, 5, 5, 5), rect('b', 100, 0, 10, 10), rect('c', 200, 0, 10, 10)];
+  const sources = partSources(findParts(shapes), shapes);
+  const place = (partId: string, copy = 0) => ({ partId, copy, rotationDeg: 0, dx: 0, dy: 0 });
+
+  it('lists every shape of the parts that were placed on any sheet, and nothing else', () => {
+    const sheets: NestSheet[] = [
+      { usedLengthMm: 0, placements: [place('outer'), place('outer', 1)] },
+      { usedLengthMm: 0, placements: [place('b')] },
+    ];
+    // Part c was left out or did not fit: its original stays.
+    expect([...placedSourceIds(sheets, sources)].sort()).toEqual(['b', 'hole', 'outer']);
+  });
+
+  it('is empty without sheets and ignores parts it has no shapes for', () => {
+    expect(placedSourceIds([], sources).size).toBe(0);
+    expect(placedSourceIds([{ usedLengthMm: 0, placements: [place('missing')] }], sources).size).toBe(0);
+  });
+});
+
+describe('sameParts and sameOptions', () => {
+  const groups = findParts([rect('a', 0, 0, 40, 20), rect('b', 100, 0, 10, 10)]);
+  const partsFor = (settings: Record<string, { quantity: number; canRotate: boolean }>) =>
+    toNestParts(groups, (id) => settings[id]);
+
+  it('finds the same request in two lists built from the same parts', () => {
+    expect(sameParts(partsFor({}), partsFor({}))).toBe(true);
+    const locked = { a: { quantity: 3, canRotate: false } };
+    expect(sameParts(partsFor(locked), partsFor({ ...locked }))).toBe(true);
+  });
+
+  it('notices a changed quantity, rotation lock, left-out part, order or outline', () => {
+    const base = partsFor({});
+    expect(sameParts(base, partsFor({ a: { quantity: 2, canRotate: true } }))).toBe(false);
+    expect(sameParts(base, partsFor({ b: { quantity: 1, canRotate: false } }))).toBe(false);
+    expect(sameParts(base, partsFor({ b: { quantity: 0, canRotate: true } }))).toBe(false);
+    expect(sameParts(base, [...base].reverse())).toBe(false);
+    const moved = toNestParts(findParts([rect('a', 1, 0, 40, 20), rect('b', 100, 0, 10, 10)]), () => undefined);
+    expect(sameParts(base, moved)).toBe(false);
+  });
+
+  it('compares every option', () => {
+    expect(sameOptions(DEFAULT_NEST_OPTIONS, { ...DEFAULT_NEST_OPTIONS })).toBe(true);
+    const changes = [
+      { sheetWidthMm: 500 },
+      { sheetHeightMm: 300 },
+      { marginMm: 0 },
+      { spacingMm: 1 },
+      { rotationStepDeg: 0 },
+      { useHoles: false },
+    ];
+    for (const change of changes) expect(sameOptions(DEFAULT_NEST_OPTIONS, { ...DEFAULT_NEST_OPTIONS, ...change })).toBe(false);
   });
 });

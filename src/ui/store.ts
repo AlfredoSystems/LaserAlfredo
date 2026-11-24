@@ -13,7 +13,6 @@ import {
   shapesFromPaths,
   transformShapes,
   updateLayer,
-  type GroupedPath,
   type LayerPatch,
 } from '../model/document';
 import {
@@ -21,7 +20,6 @@ import {
   expandToUnits,
   groupShapes,
   isInScope,
-  remapGroupIds,
   scopeEntering,
   scopeShapeIds,
   TOP_LEVEL,
@@ -117,11 +115,19 @@ export interface AppState {
   transformSelection(m: Matrix): void;
   deleteSelection(): void;
   /**
-   * Removes the shapes with the given ids and adds the paths as new shapes,
-   * as one undo step. The new shapes become the selection; returns their ids.
-   * Groups among the paths are kept, under fresh group ids.
+   * Puts a whole new document in place as one undo step, with nothing selected
+   * and at top level. The document may later be swapped with `amendDocument`.
+   * Returns false, and changes nothing, when it already is the document.
    */
-  replaceShapes(removeIds: Iterable<string>, paths: readonly GroupedPath[]): readonly string[];
+  commitDocument(doc: LaserDocument): boolean;
+  /**
+   * Swaps `expected` for `doc` without a new undo step: undo still goes back
+   * to whatever came before `expected`. Only a document that came in through
+   * `commitDocument` or an earlier amend can be swapped, and only while it is
+   * the document on screen; otherwise nothing changes and false is returned,
+   * so an edit that got in between is never overwritten. Redo is cleared.
+   */
+  amendDocument(expected: LaserDocument, doc: LaserDocument): boolean;
   setSelectionColor(color: string): void;
   patchLayer(color: string, patch: LayerPatch): void;
   undo(): void;
@@ -134,6 +140,9 @@ export interface AppState {
   setNotice(notice: Notice | null): void;
   requestFit(target: 'bed' | 'selection' | 'all'): void;
 }
+
+/** Documents that came in through `commitDocument` or `amendDocument`: the only ones an amend may swap. */
+const amendable = new WeakSet<LaserDocument>();
 
 const BED_BOUNDS: Bounds = { minX: 0, minY: 0, maxX: HL1060_BED.widthMm, maxY: HL1060_BED.heightMm };
 
@@ -336,12 +345,25 @@ export const useAppStore = create<AppState>((set, get) => {
       const { doc, selection } = get();
       commit(removeShapes(doc, selection), { selection: EMPTY_SELECTION });
     },
-    replaceShapes(removeIds, paths) {
-      const shapes = remapGroupIds(shapesFromPaths(paths, nextId), nextGroupId);
-      const doc = addShapes(removeShapes(get().doc, new Set(removeIds)), shapes);
-      const ids = shapes.map((shape) => shape.id);
-      commit(doc, { selection: liveSelection(doc, new Set(ids)), scope: TOP_LEVEL });
-      return ids;
+    commitDocument(doc) {
+      if (doc === get().doc) return false;
+      amendable.add(doc);
+      commit(doc, { selection: EMPTY_SELECTION, scope: TOP_LEVEL });
+      return true;
+    },
+    amendDocument(expected, doc) {
+      const state = get();
+      if (state.doc !== expected || !amendable.has(expected)) return false;
+      if (doc === expected) return true;
+      amendable.add(doc);
+      set({
+        doc,
+        // `past` stays as it is: its last entry is what came before `expected`.
+        future: [],
+        selection: liveSelection(doc, state.selection),
+        scope: existingScope(doc.shapes, state.scope),
+      });
+      return true;
     },
     setSelectionColor(color) {
       const { doc, selection } = get();
