@@ -346,7 +346,10 @@ export const useNestStore = create<NestState>((set, get) => {
         }
       }
       const app = useAppStore.getState();
-      const ids = app.replaceShapes(remove, shapes);
+      // Every copy made of several shapes (outline plus holes or marks) goes in as a group.
+      const sheet = result.sheets[state.sheetIndex];
+      const grouped = sheet ? sheetShapes(sheet, state.sources, previewId, previewId) : shapes;
+      const ids = app.replaceShapes(remove, grouped);
       lastApply = { result, sheetIndex: state.sheetIndex, ids };
       set({ applied: true });
       const sheetCount = result.sheets.length;

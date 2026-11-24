@@ -7,9 +7,10 @@ import {
   scaleDragMatrix,
   type ScaleHandle,
 } from '../model/handles';
-import { boundsOfShapes, pickShape, shapesInRect } from '../model/selection';
+import { reachableShapes } from '../model/groups';
+import { boundsOfShapes, pickShape } from '../model/selection';
 import { IDENTITY, translation, type Matrix } from '../model/transform';
-import type { Bounds, Point } from '../model/types';
+import type { Bounds, Point, Shape } from '../model/types';
 import { fitBounds, panBy, toDocument, toScreen, zoomAt, type View } from '../model/view';
 import { HANDLE_SIZE_PX, renderScene, rotateHandleScreen } from './scene/render';
 import { useJobStore } from './jobStore';
@@ -59,14 +60,21 @@ export function Workspace() {
     const readOnly = (): boolean =>
       useJobStore.getState().preview || nestPreview(useNestStore.getState()) !== null;
 
+    /** The topmost shape under the point that can be picked in the current scope. */
+    const pickInScope = (point: Point): Shape | null => {
+      const { doc, scope } = useAppStore.getState();
+      return pickShape(reachableShapes(doc.shapes, scope), point, PICK_TOLERANCE_PX / view.scale);
+    };
+
     const draw = () => {
       frame = 0;
-      const { doc, selection } = useAppStore.getState();
+      const { doc, selection, scope } = useAppStore.getState();
       const job = useJobStore.getState();
       renderScene(ctx, {
         doc,
         selection,
         selectionBounds: selectionBounds(),
+        scope,
         view,
         bed: HL1060_BED,
         widthPx: width,
@@ -136,8 +144,7 @@ export function Workspace() {
       if (handle === 'e' || handle === 'w') return 'ew-resize';
       if (handle === 'nw' || handle === 'se') return 'nwse-resize';
       if (handle === 'ne' || handle === 'sw') return 'nesw-resize';
-      const shape = pickShape(useAppStore.getState().doc.shapes, toDocument(view, screen), PICK_TOLERANCE_PX / view.scale);
-      return shape ? 'move' : 'default';
+      return pickInScope(toDocument(view, screen)) ? 'move' : 'default';
     };
 
     const onPointerDown = (event: PointerEvent) => {
@@ -162,11 +169,19 @@ export function Workspace() {
         } else if (handle && handle !== 'rotate' && bounds) {
           drag = { kind: 'scale', handle, bounds };
         } else {
-          const shape = pickShape(store.doc.shapes, point, PICK_TOLERANCE_PX / view.scale);
+          let shape = pickInScope(point);
+          if (!shape && store.scope.length > 0) {
+            // A shape outside the entered group: leave the group, then it is a normal click.
+            shape = pickShape(store.doc.shapes, point, PICK_TOLERANCE_PX / view.scale);
+            if (shape) {
+              store.leaveToTop();
+              store.clearSelection();
+            }
+          }
           if (shape && event.shiftKey) {
-            store.toggleSelect(shape.id);
+            store.toggleUnit(shape.id);
           } else if (shape) {
-            if (!store.selection.has(shape.id)) store.select([shape.id]);
+            if (!useAppStore.getState().selection.has(shape.id)) store.selectUnit(shape.id);
             drag = { kind: 'move', startScreen: screen, start: point, active: false };
           } else {
             drag = {
@@ -255,9 +270,10 @@ export function Workspace() {
             };
             // Dragging right-to-left also selects shapes the box only touches.
             const mode = finished.current.x < finished.start.x ? 'cross' : 'enclose';
-            const ids = shapesInRect(store.doc.shapes, rect, mode).map((shape) => shape.id);
-            store.select(finished.additive ? [...store.selection, ...ids] : ids);
+            store.selectInRect(rect, mode, finished.additive);
           } else if (!finished.additive) {
+            // A click on empty space also leaves any entered group.
+            store.leaveToTop();
             store.clearSelection();
           }
         } else if (matrix && matrix !== IDENTITY) {
@@ -270,7 +286,17 @@ export function Workspace() {
     const onPointerUp = (event: PointerEvent) => {
       if (canvas.hasPointerCapture(event.pointerId)) canvas.releasePointerCapture(event.pointerId);
       finishDrag(true);
-      canvas.style.cursor = cursorFor(eventPoint(event));
+      const screen = eventPoint(event);
+      canvas.style.cursor = cursorFor(screen);
+      // A drag that ended outside the canvas leaves no cursor position behind.
+      if (screen.x < 0 || screen.y < 0 || screen.x > width || screen.y > height) useAppStore.getState().setCursor(null);
+    };
+
+    /** Double-clicking a group goes one level into it. */
+    const onDoubleClick = (event: MouseEvent) => {
+      if (event.button !== 0 || spaceDown || readOnly()) return;
+      const shape = pickInScope(toDocument(view, eventPoint(event)));
+      if (shape) useAppStore.getState().enterGroup(shape.id);
     };
     const onPointerCancel = () => finishDrag(false);
     const onPointerLeave = () => {
@@ -298,6 +324,7 @@ export function Workspace() {
         // A nesting result is on show: only undo and redo get through.
       } else if (key === 'escape') {
         if (drag) finishDrag(false);
+        else if (store.scope.length > 0) store.leaveGroup();
         else store.clearSelection();
       } else if (key === 'delete' || key === 'backspace') {
         store.deleteSelection();
@@ -305,6 +332,26 @@ export function Workspace() {
       } else if (mod && key === 'a') {
         store.selectAll();
         event.preventDefault();
+      } else if (mod && key === 'g') {
+        if (event.shiftKey) store.ungroupSelection();
+        else store.groupSelection();
+        event.preventDefault();
+      } else if (mod && key === 'c' && !event.shiftKey) {
+        // Not prevented: text selected elsewhere on the page still copies as usual.
+        store.copySelection();
+      } else if (mod && key === 'x' && !event.shiftKey) {
+        if (!drag) store.cutSelection();
+      } else if (mod && key === 'v' && !event.shiftKey) {
+        if (!drag && store.clipboard.length > 0) {
+          // At the mouse when it is over the canvas, otherwise a step away from the original.
+          store.paste(store.cursor);
+          event.preventDefault();
+        }
+      } else if (mod && key === 'd' && !event.shiftKey) {
+        if (!drag && store.selection.size > 0) {
+          store.duplicateSelection();
+          event.preventDefault();
+        }
       } else if (mod && key === 'z' && !event.shiftKey) {
         store.undo();
         event.preventDefault();
@@ -337,7 +384,9 @@ export function Workspace() {
         lastFit = state.fitRequest;
         fit(state.fitTarget);
       }
-      if (state.doc !== previous.doc || state.selection !== previous.selection) requestDraw();
+      if (state.doc !== previous.doc || state.selection !== previous.selection || state.scope !== previous.scope) {
+        requestDraw();
+      }
     });
 
     const unsubscribeJob = useJobStore.subscribe((state, previous) => {
@@ -369,6 +418,7 @@ export function Workspace() {
     canvas.addEventListener('pointerup', onPointerUp);
     canvas.addEventListener('pointercancel', onPointerCancel);
     canvas.addEventListener('pointerleave', onPointerLeave);
+    canvas.addEventListener('dblclick', onDoubleClick);
     canvas.addEventListener('wheel', onWheel, { passive: false });
     canvas.addEventListener('contextmenu', onContextMenu);
     window.addEventListener('keydown', onKeyDown);
@@ -386,6 +436,7 @@ export function Workspace() {
       canvas.removeEventListener('pointerup', onPointerUp);
       canvas.removeEventListener('pointercancel', onPointerCancel);
       canvas.removeEventListener('pointerleave', onPointerLeave);
+      canvas.removeEventListener('dblclick', onDoubleClick);
       canvas.removeEventListener('wheel', onWheel);
       canvas.removeEventListener('contextmenu', onContextMenu);
       window.removeEventListener('keydown', onKeyDown);

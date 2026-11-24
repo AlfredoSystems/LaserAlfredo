@@ -26,6 +26,12 @@ const SAMPLE_SVG =
   '<svg xmlns="http://www.w3.org/2000/svg" width="40mm" height="20mm" viewBox="0 0 40 20">' +
   '<rect x="0" y="0" width="40" height="20" stroke="#00a000" fill="none"/></svg>';
 
+/** A 120 × 80 mm rectangle with a small one inside it, away from the bed corner so it keeps its place. */
+const SECOND_SVG =
+  '<svg xmlns="http://www.w3.org/2000/svg" width="1000mm" height="600mm" viewBox="0 0 1000 600">' +
+  '<rect x="300" y="200" width="120" height="80" stroke="#000000" fill="none"/>' +
+  '<rect x="340" y="230" width="40" height="20" stroke="#000000" fill="none"/></svg>';
+
 async function importSample(page: Page, name: string, content: string) {
   await page.getByTestId('file-input').setInputFiles({
     name,
@@ -141,6 +147,9 @@ test('selects and drags a shape with the mouse', async ({ page }) => {
   await importSample(page, 'sample.dxf', sampleDxf());
   const count = page.getByTestId('selection-count');
   const x = page.getByTestId('sel-x');
+
+  // An imported file is one group; ungroup it so its shapes select one by one.
+  await page.keyboard.press('Control+Shift+G');
 
   // Click empty bed to clear, then click the rectangle's top edge.
   const empty = await bedPoint(page, 600, 400);
@@ -357,4 +366,345 @@ test('warns about a part that fits no sheet', async ({ page }) => {
   await expect(page.getByTestId('nest-apply')).toBeDisabled();
   await expect(page.getByTestId('nest-export')).toBeDisabled();
   await expect(page.getByTestId('shape-count')).toHaveText('2 shapes');
+});
+
+test('selects an imported file as one group', async ({ page }) => {
+  await importSample(page, 'sample.dxf', sampleDxf());
+  await importSample(page, 'second.svg', SECOND_SVG);
+  await expect(page.getByTestId('shape-count')).toHaveText('4 shapes');
+  const count = page.getByTestId('selection-count');
+  // The last import is the selection.
+  await expect(count).toHaveText('2');
+  await expect(page.getByTestId('sel-x')).toHaveValue('300');
+
+  const empty = await bedPoint(page, 600, 400);
+  await page.mouse.click(empty.x, empty.y);
+  await expect(count).toHaveText('0');
+
+  // One edge of the first file selects exactly that file's two shapes.
+  const edge = await bedPoint(page, 30, 0);
+  await page.mouse.click(edge.x, edge.y);
+  await expect(count).toHaveText('2');
+  await expect(page.getByTestId('sel-x')).toHaveValue('0');
+  await expect(page.getByTestId('sel-w')).toHaveValue('100');
+
+  // The inner rectangle of the second file brings its outline along.
+  const inner = await bedPoint(page, 350, 230);
+  await page.mouse.click(inner.x, inner.y);
+  await expect(count).toHaveText('2');
+  await expect(page.getByTestId('sel-x')).toHaveValue('300');
+  await expect(page.getByTestId('sel-w')).toHaveValue('120');
+
+  // Shift-click adds the other file as a whole; Select all takes everything.
+  await page.keyboard.down('Shift');
+  await page.mouse.click(edge.x, edge.y);
+  await page.keyboard.up('Shift');
+  await expect(count).toHaveText('4');
+  await page.mouse.click(empty.x, empty.y);
+  await page.keyboard.press('Control+a');
+  await expect(count).toHaveText('4');
+
+  // A marquee that encloses only part of a file selects nothing of it.
+  await page.mouse.click(empty.x, empty.y);
+  const a = await bedPoint(page, 320, 215);
+  const b = await bedPoint(page, 400, 265);
+  await page.mouse.move(a.x, a.y);
+  await page.mouse.down();
+  await page.mouse.move(b.x, b.y, { steps: 5 });
+  await page.mouse.up();
+  await expect(count).toHaveText('0');
+  // Dragged right-to-left it touches the file, which selects all of it.
+  await page.mouse.move(b.x, b.y);
+  await page.mouse.down();
+  await page.mouse.move(a.x, a.y, { steps: 5 });
+  await page.mouse.up();
+  await expect(count).toHaveText('2');
+});
+
+test('ungroups and groups with the keyboard, one undo step each', async ({ page }) => {
+  await importSample(page, 'sample.dxf', sampleDxf());
+  const count = page.getByTestId('selection-count');
+  const empty = await bedPoint(page, 600, 400);
+  const edge = await bedPoint(page, 30, 0);
+  const circle = await bedPoint(page, 60, 25);
+  const clickEdge = async () => {
+    await page.mouse.click(empty.x, empty.y);
+    await expect(count).toHaveText('0');
+    await page.mouse.click(edge.x, edge.y);
+  };
+
+  // One group is selected: it can be ungrouped but not grouped again.
+  await expect(page.getByTestId('group')).toBeDisabled();
+  await expect(page.getByTestId('ungroup')).toBeEnabled();
+  await page.keyboard.press('Control+Shift+G');
+  // The selection stays on the same shapes.
+  await expect(count).toHaveText('2');
+  await expect(page.getByTestId('ungroup')).toBeDisabled();
+  await expect(page.getByTestId('group')).toBeEnabled();
+  await clickEdge();
+  await expect(count).toHaveText('1');
+
+  // Shift-click the circle too and group the two again.
+  await page.keyboard.down('Shift');
+  await page.mouse.click(circle.x, circle.y);
+  await page.keyboard.up('Shift');
+  await expect(count).toHaveText('2');
+  await page.keyboard.press('Control+g');
+  await expect(count).toHaveText('2');
+  await clickEdge();
+  await expect(count).toHaveText('2');
+
+  // One undo takes the group apart again, the next one restores the imported group.
+  await page.keyboard.press('Control+z');
+  await clickEdge();
+  await expect(count).toHaveText('1');
+  await page.keyboard.press('Control+z');
+  await clickEdge();
+  await expect(count).toHaveText('2');
+  await expect(page.getByTestId('shape-count')).toHaveText('2 shapes');
+  // And the one after that is the import itself.
+  await page.keyboard.press('Control+z');
+  await expect(page.getByTestId('shape-count')).toHaveText('0 shapes');
+
+  // The toolbar buttons do the same.
+  await page.keyboard.press('Control+y');
+  await page.keyboard.press('Control+a');
+  await page.getByTestId('ungroup').click();
+  await clickEdge();
+  await expect(count).toHaveText('1');
+  await page.keyboard.press('Control+a');
+  await page.getByTestId('group').click();
+  await clickEdge();
+  await expect(count).toHaveText('2');
+});
+
+test('enters a group with a double-click and leaves it with Escape', async ({ page }) => {
+  await importSample(page, 'sample.dxf', sampleDxf());
+  await importSample(page, 'second.svg', SECOND_SVG);
+  const count = page.getByTestId('selection-count');
+  const hint = page.getByTestId('group-scope');
+  const edge = await bedPoint(page, 30, 0);
+  const circle = await bedPoint(page, 60, 25);
+  const other = await bedPoint(page, 330, 200);
+  const empty = await bedPoint(page, 600, 400);
+  await expect(hint).toHaveCount(0);
+
+  await page.mouse.dblclick(edge.x, edge.y);
+  await expect(hint).toContainText('Esc to leave');
+  await expect(count).toHaveText('1');
+  await expect(page.getByTestId('sel-w')).toHaveValue('100');
+
+  // Inside the group its shapes select one by one, and Select all stays inside.
+  await page.mouse.click(circle.x, circle.y);
+  await expect(count).toHaveText('1');
+  await expect(page.getByTestId('sel-w')).toHaveValue('20');
+  await expect(hint).toBeVisible();
+  await page.keyboard.press('Control+a');
+  await expect(count).toHaveText('2');
+
+  // Escape leaves and selects the group that was left.
+  await page.mouse.click(circle.x, circle.y);
+  await page.keyboard.press('Escape');
+  await expect(hint).toHaveCount(0);
+  await expect(count).toHaveText('2');
+  await expect(page.getByTestId('sel-w')).toHaveValue('100');
+  // At top level Escape still clears the selection.
+  await page.keyboard.press('Escape');
+  await expect(count).toHaveText('0');
+
+  // Clicking a shape outside the entered group leaves it and selects that shape's group.
+  await page.mouse.dblclick(edge.x, edge.y);
+  await expect(hint).toBeVisible();
+  await page.mouse.click(other.x, other.y);
+  await expect(hint).toHaveCount(0);
+  await expect(count).toHaveText('2');
+  await expect(page.getByTestId('sel-x')).toHaveValue('300');
+
+  // Clicking empty space leaves as well.
+  await page.mouse.dblclick(edge.x, edge.y);
+  await expect(hint).toBeVisible();
+  await page.mouse.click(empty.x, empty.y);
+  await expect(hint).toHaveCount(0);
+  await expect(count).toHaveText('0');
+
+  // Undoing the import of the entered group drops back to top level.
+  await page.mouse.dblclick(other.x, other.y);
+  await expect(hint).toBeVisible();
+  await page.keyboard.press('Control+z');
+  await expect(page.getByTestId('shape-count')).toHaveText('2 shapes');
+  await expect(hint).toHaveCount(0);
+});
+
+test('copies and pastes a group at the mouse and next to the original', async ({ page }) => {
+  await importSample(page, 'sample.dxf', sampleDxf());
+  const count = page.getByTestId('selection-count');
+  const shapes = page.getByTestId('shape-count');
+  const x = page.getByTestId('sel-x');
+  const y = page.getByTestId('sel-y');
+  await expect(page.getByTestId('paste')).toBeDisabled();
+
+  const target = await bedPoint(page, 500, 300);
+  await page.mouse.move(target.x, target.y);
+  await page.keyboard.press('Control+c');
+  await expect(page.getByTestId('paste')).toBeEnabled();
+  await expect(shapes).toHaveText('2 shapes');
+  await page.keyboard.press('Control+v');
+  await expect(shapes).toHaveText('4 shapes');
+  // The paste is the selection, centred on the mouse.
+  await expect(count).toHaveText('2');
+  await expect(page.getByTestId('sel-w')).toHaveValue('100');
+  expect(Math.abs(Number(await x.inputValue()) - 450)).toBeLessThan(1.5);
+  expect(Math.abs(Number(await y.inputValue()) - 275)).toBeLessThan(1.5);
+
+  // The copy is a group of its own: one click on its edge selects it, and it moves as one.
+  const empty = await bedPoint(page, 800, 500);
+  await page.mouse.click(empty.x, empty.y);
+  await expect(count).toHaveText('0');
+  const edge = await bedPoint(page, 451, 300);
+  await page.mouse.move(edge.x, edge.y);
+  await page.mouse.down();
+  await page.mouse.move(edge.x + 50, edge.y + 30, { steps: 5 });
+  await page.mouse.up();
+  await expect(count).toHaveText('2');
+  await expect(page.getByTestId('sel-w')).toHaveValue('100');
+  expect(Math.abs(Number(await x.inputValue()) - (450 + 50 / edge.scale))).toBeLessThan(1.5);
+
+  // One undo for the move, one for the paste.
+  await page.keyboard.press('Control+z');
+  await expect(shapes).toHaveText('4 shapes');
+  await page.keyboard.press('Control+z');
+  await expect(shapes).toHaveText('2 shapes');
+
+  // The toolbar pastes a step away from the original, and a step further each time.
+  await page.getByTestId('paste').click();
+  await expect(shapes).toHaveText('4 shapes');
+  await expect(count).toHaveText('2');
+  await expect(x).toHaveValue('10');
+  await expect(y).toHaveValue('10');
+  await page.getByTestId('paste').click();
+  await expect(shapes).toHaveText('6 shapes');
+  await expect(x).toHaveValue('20');
+  await expect(y).toHaveValue('20');
+  // The original is still a group of two.
+  await page.mouse.click(empty.x, empty.y);
+  const original = await bedPoint(page, 5, 0);
+  await page.mouse.click(original.x, original.y);
+  await expect(count).toHaveText('2');
+  await expect(x).toHaveValue('0');
+});
+
+test('duplicates with Ctrl+D and cuts with Ctrl+X', async ({ page }) => {
+  await importSample(page, 'sample.dxf', sampleDxf());
+  const count = page.getByTestId('selection-count');
+  const shapes = page.getByTestId('shape-count');
+  const x = page.getByTestId('sel-x');
+
+  await page.keyboard.press('Control+d');
+  await expect(shapes).toHaveText('4 shapes');
+  await expect(count).toHaveText('2');
+  await expect(x).toHaveValue('10');
+  await expect(page.getByTestId('sel-y')).toHaveValue('10');
+  // Duplicating leaves the clipboard alone.
+  await expect(page.getByTestId('paste')).toBeDisabled();
+  await page.keyboard.press('Control+z');
+  await expect(shapes).toHaveText('2 shapes');
+
+  await page.keyboard.press('Control+a');
+  await expect(count).toHaveText('2');
+  await page.keyboard.press('Control+x');
+  await expect(shapes).toHaveText('0 shapes');
+  await expect(page.getByTestId('paste')).toBeEnabled();
+  // The mouse is not over the canvas, so the paste lands a step from where the shapes were.
+  await page.keyboard.press('Control+v');
+  await expect(shapes).toHaveText('2 shapes');
+  await expect(count).toHaveText('2');
+  await expect(x).toHaveValue('10');
+
+  // One undo for the paste, one for the cut.
+  await page.keyboard.press('Control+z');
+  await expect(shapes).toHaveText('0 shapes');
+  await page.keyboard.press('Control+z');
+  await expect(shapes).toHaveText('2 shapes');
+  await page.keyboard.press('Control+z');
+  await expect(shapes).toHaveText('0 shapes');
+});
+
+test('leaves copy, paste and typing alone inside a number field', async ({ page }) => {
+  await importSample(page, 'sample.dxf', sampleDxf());
+  const shapes = page.getByTestId('shape-count');
+  const x = page.getByTestId('sel-x');
+  const y = page.getByTestId('sel-y');
+
+  // Copying text in a field does not copy the shapes.
+  await x.fill('123');
+  await x.press('Control+a');
+  await x.press('Control+c');
+  await expect(page.getByTestId('paste')).toBeDisabled();
+  // And the text really went to the clipboard: paste it into another field.
+  await y.focus();
+  await y.press('Control+a');
+  await y.press('Control+v');
+  await expect(y).toHaveValue('123');
+  await y.press('Escape');
+
+  // With shapes on the internal clipboard, the shortcuts still belong to the field.
+  await page.getByTestId('workspace-canvas').focus();
+  await page.keyboard.press('Control+c');
+  await expect(page.getByTestId('paste')).toBeEnabled();
+  await x.focus();
+  await x.press('Control+v');
+  await x.press('Control+d');
+  await x.press('Control+x');
+  await x.press('Control+g');
+  await x.press('Escape');
+  await expect(shapes).toHaveText('2 shapes');
+  await expect(page.getByTestId('selection-count')).toHaveText('2');
+});
+
+test('keeps the editing shortcuts inert while a preview is on show', async ({ page }) => {
+  await importSample(page, 'sample.dxf', sampleDxf());
+  const shapes = page.getByTestId('shape-count');
+  await page.getByTestId('workspace-canvas').focus();
+  await page.keyboard.press('Control+c');
+
+  await page.getByTestId('preview-toggle').click();
+  await expect(page.getByTestId('preview-slider')).toBeVisible();
+  await page.getByTestId('workspace-canvas').focus();
+  await page.keyboard.press('Control+d');
+  await page.keyboard.press('Control+v');
+  await page.keyboard.press('Control+x');
+  await page.keyboard.press('Control+Shift+G');
+  const edge = await bedPoint(page, 30, 0);
+  await page.mouse.dblclick(edge.x, edge.y);
+  await expect(page.getByTestId('group-scope')).toHaveCount(0);
+  await expect(shapes).toHaveText('2 shapes');
+  await page.getByTestId('preview-toggle').click();
+
+  // The import group is still whole.
+  const empty = await bedPoint(page, 600, 400);
+  await page.mouse.click(empty.x, empty.y);
+  await page.mouse.click(edge.x, edge.y);
+  await expect(page.getByTestId('selection-count')).toHaveText('2');
+});
+
+test('applies nested copies of a part with a hole as one group each', async ({ page }) => {
+  await importSample(page, 'sample.dxf', sampleDxf());
+  await openNestTab(page, 2);
+  await page.getByTestId('nest-start').click();
+  await expect(page.getByTestId('nest-placed')).toHaveText('2 parts', NEST_TIMEOUT);
+  await page.getByTestId('nest-apply').click();
+  await expect(page.getByTestId('shape-count')).toHaveText('4 shapes');
+  const count = page.getByTestId('selection-count');
+  await expect(count).toHaveText('4');
+
+  // The copy in the top-left corner of the layout: its left edge starts at the layout's corner.
+  const left = Number(await page.getByTestId('sel-x').inputValue());
+  const top = Number(await page.getByTestId('sel-y').inputValue());
+  const empty = await bedPoint(page, 800, 500);
+  await page.mouse.click(empty.x, empty.y);
+  await expect(count).toHaveText('0');
+  const edge = await bedPoint(page, left, top + 25);
+  await page.mouse.click(edge.x, edge.y);
+  // Outline and hole together, but not the other copy.
+  await expect(count).toHaveText('2');
 });

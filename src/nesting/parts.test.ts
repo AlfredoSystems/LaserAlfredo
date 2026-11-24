@@ -36,6 +36,17 @@ function counter(prefix: string): () => string {
 }
 
 describe('findParts', () => {
+  it('finds parts by outline, whatever groups the shapes are in', () => {
+    // Two separate parts imported as one group, and a hole grouped apart from its outline.
+    const shapes: Shape[] = [
+      { ...rect('a', 0, 0, 40, 40), groups: ['file'] },
+      { ...rect('hole', 10, 10, 5, 5), groups: ['other'] },
+      { ...rect('b', 100, 0, 20, 20), groups: ['file'] },
+    ];
+    const parts = findParts(shapes);
+    expect(parts.map((part) => part.shapeIds)).toEqual([['a', 'hole'], ['b']]);
+  });
+
   it('returns nothing for an empty document', () => {
     expect(findParts([])).toEqual([]);
   });
@@ -205,6 +216,30 @@ describe('sheetShapes', () => {
     // The mark keeps its place relative to the outline.
     expect(placed[1]?.points[0]?.x).toBeCloseTo(20, 9);
     expect(placed[1]?.points[0]?.y).toBeCloseTo(10, 9);
+  });
+
+  it('makes a group of every copy with several shapes when asked to', () => {
+    const grouped: Shape[] = [
+      { ...rect('outer', 10, 20, 40, 20), groups: ['file'] },
+      { ...line('mark', 15, 25, 30, 25), groups: ['file'] },
+      { ...rect('b', 200, 0, 10, 10), groups: ['file'] },
+    ];
+    const groupedSources = partSources(findParts(grouped), grouped);
+    const sheet: NestSheet = {
+      usedLengthMm: 0,
+      placements: [
+        { partId: 'outer', copy: 0, rotationDeg: 0, dx: -10, dy: -20 },
+        { partId: 'outer', copy: 1, rotationDeg: 0, dx: 90, dy: -20 },
+        { partId: 'b', copy: 0, rotationDeg: 0, dx: 0, dy: 100 },
+      ],
+    };
+    const placed = sheetShapes(sheet, groupedSources, counter('n'), counter('g'));
+    // One group per multi-shape copy; the single-shape copy stays ungrouped.
+    expect(placed.map((shape) => shape.groups)).toEqual([['g1'], ['g1'], ['g2'], ['g2'], undefined]);
+    expect('groups' in (placed[4] ?? {})).toBe(false);
+    expect(placed.map((shape) => shape.id)).toEqual(['n1', 'n2', 'n3', 'n4', 'n5']);
+    // Without a group id source nothing is grouped, and source groups are never carried over.
+    expect(sheetShapes(sheet, groupedSources, counter('n')).every((shape) => !('groups' in shape))).toBe(true);
   });
 
   it('skips placements of parts it has no shapes for', () => {

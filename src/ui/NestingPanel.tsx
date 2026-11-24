@@ -102,7 +102,7 @@ export function NestingPanel() {
         </p>
       )}
 
-      <h2 className="panel-title">Sheet</h2>
+      <h2 className="panel-title">Sheet (mm)</h2>
       <div className="field-grid">
         <NumberField
           label="Width"

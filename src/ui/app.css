@@ -424,3 +424,7 @@ input[type='range'] {
 .status-error {
   color: var(--error);
 }
+
+.status-scope {
+  color: var(--accent);
+}

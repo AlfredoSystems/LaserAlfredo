@@ -48,11 +48,13 @@ export function LayersPanel() {
                 <option value="line">Line</option>
                 <option value="fill">Fill</option>
               </select>
-              <span className="layer-count">{counts.get(layer.color) ?? 0} shapes</span>
+              <span className="layer-count">
+                {counts.get(layer.color) ?? 0} {counts.get(layer.color) === 1 ? 'shape' : 'shapes'}
+              </span>
             </div>
             <div className="field-grid">
               <NumberField
-                label="Speed"
+                label="Speed mm/s"
                 title="Speed in mm/s"
                 value={layer.speedMmS}
                 min={0.1}
@@ -62,6 +64,7 @@ export function LayersPanel() {
               />
               <NumberField
                 label="Passes"
+                title="How many times the layer is cut"
                 value={layer.passes}
                 min={1}
                 max={100}
@@ -88,7 +91,7 @@ export function LayersPanel() {
                 onCommit={(minPowerPct) => patchLayer(layer.color, { minPowerPct })}
               />
               <NumberField
-                label="Kerf"
+                label="Kerf mm"
                 title="Width of the laser cut in mm. Outlines grow and holes shrink by half of it. 0 = off."
                 testId="layer-kerf"
                 value={layer.kerfMm}

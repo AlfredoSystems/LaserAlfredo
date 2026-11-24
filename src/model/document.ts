@@ -76,8 +76,14 @@ function syncLayers(shapes: readonly Shape[], layers: readonly Layer[]): readonl
   return [...kept, ...added];
 }
 
-/** Turns importer output into shapes. Paths with fewer than two points are dropped. */
-export function shapesFromPaths(paths: readonly ColoredPolyline[], nextId: () => string): Shape[] {
+/** A path that may already say which groups its shape belongs to. */
+export type GroupedPath = ColoredPolyline & { readonly groups?: readonly string[] };
+
+/**
+ * Turns importer output into shapes. Paths with fewer than two points are
+ * dropped. Group membership, when a path carries any, is kept.
+ */
+export function shapesFromPaths(paths: readonly GroupedPath[], nextId: () => string): Shape[] {
   const shapes: Shape[] = [];
   for (const path of paths) {
     if (path.points.length < 2) continue;
@@ -87,6 +93,7 @@ export function shapesFromPaths(paths: readonly ColoredPolyline[], nextId: () =>
       color: normalizeColor(path.color),
       points: path.points,
       closed: path.closed && path.points.length >= 3,
+      ...(path.groups && path.groups.length > 0 ? { groups: path.groups } : {}),
     });
   }
   return shapes;

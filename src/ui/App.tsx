@@ -1,4 +1,5 @@
 import { useMemo, useRef, useState, type DragEvent } from 'react';
+import { canGroup, canUngroup } from '../model/groups';
 import { boundsContainsBounds } from '../geometry/bounds';
 import { HL1060_BED } from '../model/bed';
 import { boundsOfShapes } from '../model/selection';
@@ -29,9 +30,26 @@ function Toolbar() {
   const canRedo = useAppStore((state) => state.future.length > 0);
   const hasSelection = useAppStore((state) => state.selection.size > 0);
   const hasShapes = useAppStore((state) => state.doc.shapes.length > 0);
+  const shapes = useAppStore((state) => state.doc.shapes);
+  const selection = useAppStore((state) => state.selection);
+  const scope = useAppStore((state) => state.scope);
+  const hasClipboard = useAppStore((state) => state.clipboard.length > 0);
+  const groupable = useMemo(() => canGroup(shapes, selection, scope), [shapes, selection, scope]);
+  const ungroupable = useMemo(() => canUngroup(shapes, selection, scope), [shapes, selection, scope]);
   const joinToleranceMm = useAppStore((state) => state.joinToleranceMm);
   const keepFileColors = useAppStore((state) => state.keepFileColors);
-  const { undo, redo, deleteSelection, requestFit, setJoinTolerance, setKeepFileColors } = useAppStore.getState();
+  const {
+    undo,
+    redo,
+    deleteSelection,
+    copySelection,
+    paste,
+    groupSelection,
+    ungroupSelection,
+    requestFit,
+    setJoinTolerance,
+    setKeepFileColors,
+  } = useAppStore.getState();
 
   return (
     <div className="toolbar">
@@ -61,6 +79,43 @@ function Toolbar() {
       </button>
       <button type="button" disabled={!hasSelection} onClick={deleteSelection} title="Delete selection (Del)">
         Delete
+      </button>
+      <span className="toolbar-gap" />
+      <button
+        type="button"
+        disabled={!hasSelection}
+        onClick={copySelection}
+        title="Copy the selection (Ctrl+C). Cut: Ctrl+X. Duplicate: Ctrl+D."
+        data-testid="copy"
+      >
+        Copy
+      </button>
+      <button
+        type="button"
+        disabled={!hasClipboard}
+        onClick={() => paste(null)}
+        title="Paste next to the original (Ctrl+V pastes at the mouse)"
+        data-testid="paste"
+      >
+        Paste
+      </button>
+      <button
+        type="button"
+        disabled={!groupable}
+        onClick={groupSelection}
+        title="Group the selection (Ctrl+G). Double-click a group to edit inside it."
+        data-testid="group"
+      >
+        Group
+      </button>
+      <button
+        type="button"
+        disabled={!ungroupable}
+        onClick={ungroupSelection}
+        title="Ungroup the selection (Ctrl+Shift+G)"
+        data-testid="ungroup"
+      >
+        Ungroup
       </button>
       <span className="toolbar-gap" />
       <button type="button" onClick={() => requestFit('bed')} title="Show the whole bed">
@@ -103,6 +158,7 @@ function StatusBar() {
   const zoom = useAppStore((state) => state.zoom);
   const shapes = useAppStore((state) => state.doc.shapes);
   const notice = useAppStore((state) => state.notice);
+  const scopeDepth = useAppStore((state) => state.scope.length);
   const outOfBed = useMemo(() => {
     const bounds = boundsOfShapes(shapes);
     return bounds !== null && !boundsContainsBounds(BED_BOUNDS, bounds);
@@ -117,6 +173,11 @@ function StatusBar() {
       <span className="status-cell" data-testid="shape-count">
         {shapes.length} {shapes.length === 1 ? 'shape' : 'shapes'}
       </span>
+      {scopeDepth > 0 && (
+        <span className="status-cell status-scope" data-testid="group-scope">
+          Inside group{scopeDepth > 1 ? ` (level ${scopeDepth})` : ''} — Esc to leave
+        </span>
+      )}
       {outOfBed && (
         <span className="status-cell status-error" data-testid="out-of-bed">
           Shapes outside the bed

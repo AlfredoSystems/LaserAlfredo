@@ -136,19 +136,26 @@ export function partSources(groups: readonly PartGroup[], shapes: readonly Shape
 /**
  * The shapes of one nested sheet, in sheet coordinates: a copy of the part's
  * source shapes for every placement. Placements of unknown parts are skipped.
+ *
+ * The groups of the source shapes are not carried over. With `nextGroupId`,
+ * every copy made of more than one shape becomes a group of its own, so it
+ * moves as one piece; single-shape copies stay ungrouped.
  */
 export function sheetShapes(
   sheet: NestSheet,
   sources: ReadonlyMap<string, readonly Shape[]>,
   nextId: () => string,
+  nextGroupId?: () => string,
 ): Shape[] {
   const shapes: Shape[] = [];
   for (const placement of sheet.placements) {
     const source = sources.get(placement.partId);
     if (!source) continue;
     const m = placementMatrix(placement);
+    const groups = nextGroupId && source.length > 1 ? [nextGroupId()] : null;
     for (const shape of source) {
-      shapes.push({ id: nextId(), color: shape.color, closed: shape.closed, points: applyToPoints(m, shape.points) });
+      const copy: Shape = { id: nextId(), color: shape.color, closed: shape.closed, points: applyToPoints(m, shape.points) };
+      shapes.push(groups ? { ...copy, groups } : copy);
     }
   }
   return shapes;

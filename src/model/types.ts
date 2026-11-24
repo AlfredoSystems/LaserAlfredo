@@ -21,6 +21,11 @@ export interface ColoredPolyline extends Polyline {
 /** A document shape: one contour on one layer. Points are in document mm. */
 export interface Shape extends ColoredPolyline {
   readonly id: string;
+  /**
+   * Ids of the groups the shape belongs to, outermost first. Absent or empty
+   * means ungrouped. See `groups.ts`.
+   */
+  readonly groups?: readonly string[];
 }
 
 export type LayerMode = 'line' | 'fill';

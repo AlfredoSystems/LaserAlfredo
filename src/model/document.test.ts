@@ -73,6 +73,21 @@ describe('shapesFromPaths', () => {
     );
     expect(shape?.closed).toBe(false);
   });
+
+  it('keeps the groups a path carries and leaves the property out otherwise', () => {
+    const points = [{ x: 0, y: 0 }, { x: 1, y: 1 }];
+    const shapes = shapesFromPaths(
+      [
+        { color: '#000000', closed: false, points, groups: ['g1', 'g2'] },
+        { color: '#000000', closed: false, points, groups: [] },
+        { color: '#000000', closed: false, points },
+      ],
+      counter(),
+    );
+    expect(shapes[0]?.groups).toEqual(['g1', 'g2']);
+    expect('groups' in (shapes[1] ?? {})).toBe(false);
+    expect('groups' in (shapes[2] ?? {})).toBe(false);
+  });
 });
 
 describe('document operations', () => {

@@ -42,21 +42,24 @@ export function TransformPanel() {
       </h2>
       <div className="field-grid">
         <NumberField
-          label="X"
+          label="X mm"
+          title="Left edge of the selection in mm"
           testId="sel-x"
           value={bounds ? bounds.minX : null}
           disabled={disabled}
           onCommit={(x) => bounds && transformSelection(translation(x - bounds.minX, 0))}
         />
         <NumberField
-          label="Y"
+          label="Y mm"
+          title="Top edge of the selection in mm"
           testId="sel-y"
           value={bounds ? bounds.minY : null}
           disabled={disabled}
           onCommit={(y) => bounds && transformSelection(translation(0, y - bounds.minY))}
         />
         <NumberField
-          label="W"
+          label="W mm"
+          title="Width of the selection in mm"
           testId="sel-w"
           value={width}
           min={0.001}
@@ -64,7 +67,8 @@ export function TransformPanel() {
           onCommit={(w) => resize(w, null)}
         />
         <NumberField
-          label="H"
+          label="H mm"
+          title="Height of the selection in mm"
           testId="sel-h"
           value={height}
           min={0.001}
@@ -77,7 +81,7 @@ export function TransformPanel() {
         Lock aspect ratio
       </label>
       <div className="row">
-        <NumberField label="Rotate °" value={angle} min={-360} max={360} onCommit={setAngle} />
+        <NumberField label="Rotate °" title="Angle in degrees for the rotate buttons" value={angle} min={-360} max={360} onCommit={setAngle} />
         <button
           type="button"
           disabled={disabled}
