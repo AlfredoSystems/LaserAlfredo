@@ -1045,3 +1045,247 @@ test('keeps the canvas editable after nesting: a copy with a hole selects as one
   await expect(page.getByTestId('nest-result')).toHaveCount(0);
   await expect(page.getByTestId('nest-start')).toHaveText('Nest');
 });
+
+async function openMaterialTest(page: Page) {
+  await page.getByTestId('material-test-open').click();
+  await expect(page.getByTestId('material-test-dialog')).toBeVisible();
+}
+
+/** Types a value into a number field of the material test popup and commits it. */
+async function setTestField(page: Page, testId: string, value: string) {
+  await page.getByTestId(testId).fill(value);
+  await page.getByTestId(testId).press('Enter');
+}
+
+test('material test popup: defaults, step limits, warnings and Escape', async ({ page }) => {
+  const summary = page.getByTestId('material-test-summary');
+  const warning = page.getByTestId('material-test-warning');
+  const caution = page.getByTestId('material-test-caution');
+  const create = page.getByTestId('material-test-create');
+
+  await openMaterialTest(page);
+  // The popup takes the focus.
+  await expect(page.getByTestId('material-test-columns-parameter')).toBeFocused();
+  await expect(summary).toHaveText('70.7 × 77.8 mm, 25 cells');
+  await expect(page.getByTestId('material-test-columns-parameter')).toHaveValue('speed');
+  await expect(page.getByTestId('material-test-rows-parameter')).toHaveValue('power');
+  await expect(warning).toHaveCount(0);
+  await expect(caution).toHaveCount(0);
+  await expect(create).toBeEnabled();
+
+  // Steps are limited to 4–10.
+  await setTestField(page, 'material-test-columns-steps', '3');
+  await expect(page.getByTestId('material-test-columns-steps')).toHaveValue('4');
+  await expect(summary).toContainText('20 cells');
+  await setTestField(page, 'material-test-rows-steps', '11');
+  await expect(page.getByTestId('material-test-rows-steps')).toHaveValue('10');
+  await expect(summary).toContainText('40 cells');
+
+  // The same setting on both axes is no grid.
+  await page.getByTestId('material-test-rows-parameter').selectOption('speed');
+  await expect(warning).toContainText('same setting');
+  await expect(create).toBeDisabled();
+  await page.getByTestId('material-test-rows-parameter').selectOption('passes');
+  await expect(warning).toHaveCount(0);
+  await expect(create).toBeEnabled();
+  await expect(page.getByTestId('material-test-passes')).toBeDisabled();
+  await expect(page.getByTestId('material-test-power')).toBeEnabled();
+
+  // A speed the exporter refuses is pointed out, but does not block.
+  await setTestField(page, 'material-test-columns-to', '800');
+  await expect(caution).toContainText('above 500 mm/s');
+  await expect(create).toBeEnabled();
+  await setTestField(page, 'material-test-columns-to', '50');
+  await expect(caution).toHaveCount(0);
+
+  // A grid larger than the bed cannot be created.
+  await setTestField(page, 'material-test-cell', '50');
+  await setTestField(page, 'material-test-gap', '20');
+  await expect(warning).toContainText('does not fit the 1000 × 600 mm bed');
+  await expect(create).toBeDisabled();
+
+  // Escape closes the popup and adds nothing.
+  await page.keyboard.press('Escape');
+  await expect(page.getByTestId('material-test-dialog')).toHaveCount(0);
+  await expect(page.getByTestId('shape-count')).toHaveText('0 shapes');
+  await expect(page.getByTestId('layer-row')).toHaveCount(0);
+
+  // The options are remembered for the session; Cancel closes too.
+  await openMaterialTest(page);
+  await expect(page.getByTestId('material-test-cell')).toHaveValue('50');
+  await expect(page.getByTestId('material-test-columns-steps')).toHaveValue('4');
+  await page.getByTestId('material-test-cancel').click();
+  await expect(page.getByTestId('material-test-dialog')).toHaveCount(0);
+  await expect(page.getByTestId('shape-count')).toHaveText('0 shapes');
+});
+
+test('material test popup warns when the power cap would flatten the test and keeps canvas shortcuts out', async ({ page }) => {
+  await importSample(page, 'sample.dxf', sampleDxf());
+  await expect(page.getByTestId('selection-count')).toHaveText('2');
+  await page.getByTestId('power-cap').fill('30');
+  await page.getByTestId('power-cap').press('Enter');
+
+  await openMaterialTest(page);
+  await expect(page.getByTestId('material-test-caution')).toContainText('power cap is 30 %');
+  await expect(page.getByTestId('material-test-caution')).toContainText('misleading');
+  await expect(page.getByTestId('material-test-create')).toBeEnabled();
+  await setTestField(page, 'material-test-rows-to', '30');
+  await expect(page.getByTestId('material-test-caution')).toHaveCount(0);
+
+  // With the focus on a button of the popup, Delete and Ctrl+D do not reach the canvas.
+  await page.getByTestId('material-test-cancel').focus();
+  await page.keyboard.press('Delete');
+  await page.keyboard.press('Control+d');
+  await expect(page.getByTestId('shape-count')).toHaveText('2 shapes');
+  await expect(page.getByTestId('selection-count')).toHaveText('2');
+
+  // A field that commits on the way to a button, and brings a message back, does not make the click miss.
+  await page.getByTestId('material-test-rows-to').fill('50');
+  await page.getByTestId('material-test-cancel').click();
+  await expect(page.getByTestId('material-test-dialog')).toHaveCount(0);
+  await expect(page.getByTestId('shape-count')).toHaveText('2 shapes');
+});
+
+test('creates a material test as one group and one undo step, moves it and exports it', async ({ page }) => {
+  await importSample(page, 'sample.dxf', sampleDxf());
+  await expect(page.getByTestId('shape-count')).toHaveText('2 shapes');
+  await expect(page.getByTestId('layer-row')).toHaveCount(1);
+  const zoom = page.locator('.status-mono').nth(1);
+  const zoomBefore = await zoom.textContent();
+
+  await openMaterialTest(page);
+  await page.getByTestId('material-test-create').click();
+  await expect(page.getByTestId('material-test-dialog')).toHaveCount(0);
+
+  // 25 cells and 67 label strokes, on two new layers.
+  await expect(page.getByTestId('shape-count')).toHaveText('94 shapes');
+  const rows = page.getByTestId('layer-row');
+  await expect(rows).toHaveCount(3);
+  await expect(page.getByTestId('layer-note')).toHaveCount(1);
+  await expect(rows.nth(1)).toContainText('67 shapes');
+  await expect(rows.nth(1).getByTestId('layer-max-power')).toHaveValue('12');
+  await expect(rows.nth(1).getByTestId('layer-note')).toHaveCount(0);
+  await expect(rows.nth(2)).toContainText('25 shapes');
+  await expect(rows.nth(2).getByTestId('layer-note')).toHaveText('Material test — settings are per cell');
+  await expect(rows.nth(2).getByTestId('layer-max-power')).toHaveCount(0);
+  await expect(rows.nth(2).getByTestId('layer-kerf')).toBeVisible();
+
+  // Selected as one group at (10, 10); the view did not move.
+  await expect(page.getByTestId('selection-count')).toHaveText('92');
+  await expect(page.getByTestId('sel-x')).toHaveValue('10');
+  await expect(page.getByTestId('sel-y')).toHaveValue('10');
+  await expect(page.getByTestId('sel-w')).toHaveValue('70.67');
+  await expect(page.getByTestId('group-scope')).toHaveCount(0);
+  await expect(page.getByTestId('ungroup')).toBeEnabled();
+  expect(await zoom.textContent()).toBe(zoomBefore);
+
+  // Typing X moves all of it.
+  await page.getByTestId('sel-x').fill('200');
+  await page.getByTestId('sel-x').press('Enter');
+  await expect(page.getByTestId('sel-x')).toHaveValue('200');
+  await expect(page.getByTestId('sel-y')).toHaveValue('10');
+  await expect(page.getByTestId('sel-w')).toHaveValue('70.67');
+  await expect(page.getByTestId('selection-count')).toHaveText('92');
+
+  // The job has the two imported paths and one per test shape, and exports.
+  await expect(page.getByTestId('job-stats')).toContainText('Paths94');
+  const [download] = await Promise.all([page.waitForEvent('download'), page.getByTestId('export-rd').click()]);
+  expect(download.suggestedFilename()).toBe('job.rd');
+  const stream = await download.createReadStream();
+  let size = 0;
+  for await (const chunk of stream) size += (chunk as Buffer).length;
+  expect(size).toBeGreaterThan(5000);
+  await expect(page.getByTestId('notice')).toContainText('Exported job.rd');
+
+  // Undo the move, then one more undo takes the grid and both its layers away.
+  await page.getByTestId('workspace-canvas').focus();
+  await page.keyboard.press('Control+z');
+  await expect(page.getByTestId('sel-x')).toHaveValue('10');
+  await expect(page.getByTestId('shape-count')).toHaveText('94 shapes');
+  await page.keyboard.press('Control+z');
+  await expect(page.getByTestId('shape-count')).toHaveText('2 shapes');
+  await expect(page.getByTestId('layer-row')).toHaveCount(1);
+  await expect(page.getByTestId('layer-note')).toHaveCount(0);
+  await expect(page.getByTestId('selection-count')).toHaveText('0');
+  // Redo brings it back whole.
+  await page.keyboard.press('Control+y');
+  await expect(page.getByTestId('shape-count')).toHaveText('94 shapes');
+  await expect(page.getByTestId('layer-row')).toHaveCount(3);
+});
+
+test('shows the settings of one cell inside the material test group and drops them on a layer change', async ({ page }) => {
+  await openMaterialTest(page);
+  await setTestField(page, 'material-test-columns-steps', '4');
+  await setTestField(page, 'material-test-rows-steps', '4');
+  await setTestField(page, 'material-test-cell', '50');
+  await setTestField(page, 'material-test-gap', '20');
+  await page.getByTestId('material-test-labels').uncheck();
+  await expect(page.getByTestId('material-test-label-speed')).toBeDisabled();
+  await expect(page.getByTestId('material-test-summary')).toHaveText('260 × 260 mm, 16 cells');
+  await page.getByTestId('material-test-create').click();
+  await expect(page.getByTestId('shape-count')).toHaveText('16 shapes');
+  await expect(page.getByTestId('layer-row')).toHaveCount(1);
+  await expect(page.getByTestId('selection-count')).toHaveText('16');
+  // The whole group has no single setting to show.
+  await expect(page.getByTestId('cell-settings')).toHaveCount(0);
+
+  // Cells are 50 mm at a pitch of 70 mm from (10, 10). One click on a cell takes the whole group.
+  const first = await bedPoint(page, 10, 35);
+  const other = await bedPoint(page, 150, 245);
+  await page.getByTestId('workspace-canvas').focus();
+  await page.keyboard.press('Escape');
+  await expect(page.getByTestId('selection-count')).toHaveText('0');
+  await page.mouse.click(other.x, other.y);
+  await expect(page.getByTestId('selection-count')).toHaveText('16');
+
+  // Double-click the left edge of the first cell to go inside.
+  await page.mouse.dblclick(first.x, first.y);
+  await expect(page.getByTestId('group-scope')).toContainText('Esc to leave');
+  await expect(page.getByTestId('selection-count')).toHaveText('1');
+  await expect(page.getByTestId('cell-settings')).toHaveText('Cell: 10 mm/s · 10 % · 1 pass');
+  // Third column, fourth row.
+  await page.mouse.click(other.x, other.y);
+  await expect(page.getByTestId('selection-count')).toHaveText('1');
+  await expect(page.getByTestId('cell-settings')).toHaveText('Cell: 36.7 mm/s · 50 % · 1 pass');
+
+  // On another layer the cell uses that layer's settings.
+  await page.getByTestId('palette-000000').click();
+  await expect(page.getByTestId('cell-settings')).toHaveCount(0);
+  const rows = page.getByTestId('layer-row');
+  await expect(rows).toHaveCount(2);
+  await expect(rows.nth(0)).toContainText('15 shapes');
+  await expect(rows.nth(0).getByTestId('layer-note')).toHaveText('Material test — settings are per cell');
+  await expect(rows.nth(1)).toContainText('1 shape');
+  await expect(rows.nth(1).getByTestId('layer-max-power')).toHaveValue('30');
+  await page.getByTestId('workspace-canvas').focus();
+  await page.keyboard.press('Control+z');
+  await expect(page.getByTestId('cell-settings')).toHaveText('Cell: 36.7 mm/s · 50 % · 1 pass');
+  await expect(rows).toHaveCount(1);
+
+  await page.keyboard.press('Escape');
+  await expect(page.getByTestId('group-scope')).toHaveCount(0);
+  await expect(page.getByTestId('selection-count')).toHaveText('16');
+  await expect(page.getByTestId('cell-settings')).toHaveCount(0);
+});
+
+test('nests a material test and its copies keep their per-cell settings', async ({ page }) => {
+  await openMaterialTest(page);
+  await setTestField(page, 'material-test-columns-steps', '4');
+  await setTestField(page, 'material-test-rows-steps', '4');
+  await page.getByTestId('material-test-labels').uncheck();
+  await page.getByTestId('material-test-create').click();
+  await expect(page.getByTestId('shape-count')).toHaveText('16 shapes');
+  await expect(page.getByTestId('job-stats')).toContainText('Paths16');
+
+  await page.getByTestId('tab-nest').click();
+  await page.getByTestId('nest-start').click();
+  await expect(page.getByTestId('nest-placed')).toHaveText('16 parts', NEST_TIMEOUT);
+  await expect(page.getByTestId('shape-count')).toHaveText('16 shapes');
+
+  await page.getByTestId('tab-cut').click();
+  const rows = page.getByTestId('layer-row');
+  await expect(rows).toHaveCount(1);
+  await expect(rows.nth(0)).toContainText('16 shapes');
+  await expect(rows.nth(0).getByTestId('layer-note')).toHaveText('Material test — settings are per cell');
+  await expect(page.getByTestId('job-stats')).toContainText('Paths16');
+});

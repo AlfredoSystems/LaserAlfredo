@@ -3,8 +3,18 @@ import { LAYER_PALETTE } from '../model/document';
 import { resizeMatrix } from '../model/handles';
 import { boundsOfShapes } from '../model/selection';
 import { rotation, scaling, translation } from '../model/transform';
+import type { ShapeCutSettings } from '../model/types';
 import { NumberField } from './NumberField';
 import { useAppStore } from './store';
+
+function describeSettings(settings: ShapeCutSettings): string {
+  const number = (value: number) => String(Number(value.toFixed(1)));
+  const min = settings.minPowerPct < settings.maxPowerPct ? ` (min ${number(settings.minPowerPct)} %)` : '';
+  return (
+    `${number(settings.speedMmS)} mm/s · ${number(settings.maxPowerPct)} %${min} · ` +
+    `${settings.passes} ${settings.passes === 1 ? 'pass' : 'passes'}`
+  );
+}
 
 export function TransformPanel() {
   const doc = useAppStore((state) => state.doc);
@@ -19,6 +29,11 @@ export function TransformPanel() {
     () => (selection.size === 0 ? null : boundsOfShapes(doc.shapes, selection)),
     [doc.shapes, selection],
   );
+  /** The own cut settings of the selected shape, when exactly one shape is selected and it has any. */
+  const cellSettings = useMemo(() => {
+    if (selection.size !== 1) return null;
+    return doc.shapes.find((shape) => selection.has(shape.id))?.settings ?? null;
+  }, [doc.shapes, selection]);
   const width = bounds ? bounds.maxX - bounds.minX : null;
   const height = bounds ? bounds.maxY - bounds.minY : null;
   const disabled = !bounds;
@@ -76,6 +91,15 @@ export function TransformPanel() {
           onCommit={(h) => resize(null, h)}
         />
       </div>
+      {cellSettings && (
+        <p
+          className="cell-settings"
+          data-testid="cell-settings"
+          title="This shape is cut with its own settings instead of its layer's. Moving it to another layer drops them."
+        >
+          Cell: {describeSettings(cellSettings)}
+        </p>
+      )}
       <label className="check">
         <input type="checkbox" checked={lockAspect} onChange={(event) => setLockAspect(event.target.checked)} />
         Lock aspect ratio

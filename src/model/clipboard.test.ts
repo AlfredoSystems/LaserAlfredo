@@ -130,3 +130,24 @@ describe('pasteShapes', () => {
     expect(pasteShapes([], options())).toEqual([]);
   });
 });
+
+describe('per-shape cut settings on the clipboard', () => {
+  const settings = { speedMmS: 30, maxPowerPct: 40, minPowerPct: 40, passes: 1 };
+  const shapes: Shape[] = [{ ...square('a', 0, '#a04000', ['g1']), settings }, square('b', 20, '#a04000', ['g1'])];
+
+  it('copies and pastes them with the shape, at top level and from inside a group', () => {
+    for (const scope of [TOP_LEVEL, ['g1']]) {
+      const copied = copyShapes(shapes, new Set(['a', 'b']), scope);
+      expect(copied.map((shape) => shape.settings)).toEqual([settings, undefined]);
+      const pasted = pasteShapes(copied, {
+        scope,
+        target: { kind: 'offset', dx: 10, dy: 10 },
+        nextShapeId: counter('p'),
+        nextGroupId: counter('n'),
+      });
+      expect(pasted.map((shape) => shape.id)).toEqual(['p1', 'p2']);
+      expect(pasted.map((shape) => shape.settings)).toEqual([settings, undefined]);
+      expect(pasted[0]?.color).toBe('#a04000');
+    }
+  });
+});

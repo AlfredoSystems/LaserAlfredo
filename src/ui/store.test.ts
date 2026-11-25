@@ -1,5 +1,12 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { addShapes, EMPTY_DOCUMENT } from '../model/document';
+import { addShapes, defaultLayer, EMPTY_DOCUMENT } from '../model/document';
+import {
+  DEFAULT_MATERIAL_TEST_OPTIONS,
+  defaultAxis,
+  MATERIAL_TEST_CELL_COLOR,
+  MATERIAL_TEST_LABEL_COLOR,
+} from '../model/materialTest';
+import { boundsOfShapes } from '../model/selection';
 import { translation } from '../model/transform';
 import type { LaserDocument, Shape } from '../model/types';
 import { useAppStore } from './store';
@@ -188,5 +195,94 @@ describe('ordinary edits', () => {
     expect(app().doc).toBe(swapped);
     app().undo();
     expect(app().doc).toBe(original);
+  });
+});
+
+describe('addMaterialTest', () => {
+  it('adds the grid as one undo step, selected as one group at top level, with both layers set up', () => {
+    const grouped = docOf(rect('a', 0, ['g']), rect('b', 20, ['g']));
+    useAppStore.setState({ doc: grouped, past: [], scope: ['g'], fitRequest: 7 });
+    expect(app().addMaterialTest(DEFAULT_MATERIAL_TEST_OPTIONS, { x: 10, y: 10 })).toBe(true);
+
+    const added = app().doc.shapes.slice(2);
+    expect(added.filter((shape) => shape.color === MATERIAL_TEST_CELL_COLOR)).toHaveLength(25);
+    expect(added.filter((shape) => shape.color === MATERIAL_TEST_LABEL_COLOR).length).toBeGreaterThan(10);
+    expect(added).toHaveLength(app().doc.shapes.length - 2);
+    // One group, new to the document, holding every added shape.
+    const group = added[0]?.groups;
+    expect(group).toHaveLength(1);
+    expect(group?.[0]).not.toBe('g');
+    for (const shape of added) expect(shape.groups).toEqual(group);
+    expect(new Set(ids()).size).toBe(ids().length);
+    expect(app().selection).toEqual(new Set(added.map((shape) => shape.id)));
+    expect(app().scope).toEqual([]);
+    const bounds = boundsOfShapes(app().doc.shapes, app().selection);
+    expect(bounds?.minX).toBeCloseTo(10, 9);
+    expect(bounds?.minY).toBeCloseTo(10, 9);
+    // The view is not asked to move.
+    expect(app().fitRequest).toBe(7);
+
+    expect(app().doc.layers.map((layer) => layer.color)).toEqual(['#000000', MATERIAL_TEST_LABEL_COLOR, MATERIAL_TEST_CELL_COLOR]);
+    expect(app().doc.layers[1]).toEqual({
+      ...defaultLayer(MATERIAL_TEST_LABEL_COLOR),
+      speedMmS: 100,
+      maxPowerPct: 12,
+      minPowerPct: 12,
+      passes: 1,
+    });
+    expect(app().doc.layers[2]).toEqual(defaultLayer(MATERIAL_TEST_CELL_COLOR));
+
+    expect(app().past).toEqual([grouped]);
+    app().undo();
+    expect(app().doc).toBe(grouped);
+    expect(app().selection.size).toBe(0);
+    app().redo();
+    expect(app().doc.shapes).toHaveLength(added.length + 2);
+    expect(app().doc.shapes[app().doc.shapes.length - 1]?.settings).toEqual({ speedMmS: 50, maxPowerPct: 50, minPowerPct: 50, passes: 1 });
+  });
+
+  it('updates the label layer of an earlier test and gives the second test a group of its own', () => {
+    app().addMaterialTest(DEFAULT_MATERIAL_TEST_OPTIONS, { x: 10, y: 10 });
+    const firstGroup = app().doc.shapes[app().doc.shapes.length - 1]?.groups;
+    app().addMaterialTest({ ...DEFAULT_MATERIAL_TEST_OPTIONS, labelSpeedMmS: 150, labelPowerPct: 9 }, { x: 200, y: 10 });
+    const secondGroup = app().doc.shapes[app().doc.shapes.length - 1]?.groups;
+    expect(secondGroup).not.toEqual(firstGroup);
+    expect(app().doc.layers).toHaveLength(3);
+    expect(app().doc.layers.find((layer) => layer.color === MATERIAL_TEST_LABEL_COLOR)).toMatchObject({ speedMmS: 150, maxPowerPct: 9, minPowerPct: 9 });
+    expect(app().doc.shapes.filter((shape) => shape.color === MATERIAL_TEST_CELL_COLOR)).toHaveLength(50);
+  });
+
+  it('keeps the cells\' own settings through copy, paste, duplicate, move and undo, and drops them on a layer change', () => {
+    useAppStore.setState({ doc: EMPTY_DOCUMENT, past: [], selection: new Set() });
+    app().addMaterialTest({ ...DEFAULT_MATERIAL_TEST_OPTIONS, labels: false }, { x: 10, y: 10 });
+    const withSettings = () => app().doc.shapes.filter((shape) => shape.settings !== undefined).length;
+    expect(withSettings()).toBe(25);
+    app().transformSelection(translation(30, 0));
+    expect(withSettings()).toBe(25);
+    app().duplicateSelection();
+    expect(withSettings()).toBe(50);
+    app().copySelection();
+    app().paste({ x: 300, y: 300 });
+    expect(withSettings()).toBe(75);
+    expect(app().doc.shapes[74]?.settings).toEqual(app().doc.shapes[24]?.settings);
+    app().undo();
+    app().undo();
+    expect(withSettings()).toBe(25);
+    app().redo();
+    expect(withSettings()).toBe(50);
+    // The duplicate moves to black and uses that layer's settings from then on.
+    app().select(app().doc.shapes.slice(25).map((shape) => shape.id));
+    app().setSelectionColor('#000000');
+    expect(withSettings()).toBe(25);
+    expect(app().doc.shapes.filter((shape) => shape.color === '#000000')).toHaveLength(25);
+    app().undo();
+    expect(withSettings()).toBe(50);
+  });
+
+  it('adds nothing when both axes vary the same setting', () => {
+    const before = app().doc;
+    expect(app().addMaterialTest({ ...DEFAULT_MATERIAL_TEST_OPTIONS, rows: defaultAxis('speed') }, { x: 10, y: 10 })).toBe(false);
+    expect(app().doc).toBe(before);
+    expect(app().past).toEqual([EMPTY_DOCUMENT]);
   });
 });

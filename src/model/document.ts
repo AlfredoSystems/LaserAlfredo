@@ -1,5 +1,5 @@
 import { applyToPoints, type Matrix } from './transform';
-import type { ColoredPolyline, LaserDocument, Layer, Shape } from './types';
+import type { ColoredPolyline, LaserDocument, Layer, Shape, ShapeCutSettings } from './types';
 
 export const EMPTY_DOCUMENT: LaserDocument = { shapes: [], layers: [] };
 
@@ -120,14 +120,56 @@ export function transformShapes(doc: LaserDocument, ids: ReadonlySet<string>, m:
   return { shapes, layers: doc.layers };
 }
 
-/** Moves the shapes to the layer of the given colour, creating it if needed. */
+/**
+ * Moves the shapes to the layer of the given colour, creating it if needed.
+ * A shape that changes layer loses its own cut settings and uses the new
+ * layer's; a shape that already has the colour is left as it is.
+ */
 export function setShapesColor(doc: LaserDocument, ids: ReadonlySet<string>, color: string): LaserDocument {
   if (ids.size === 0) return doc;
   const target = normalizeColor(color);
-  const shapes = doc.shapes.map((shape) =>
-    ids.has(shape.id) && shape.color !== target ? { ...shape, color: target } : shape,
-  );
+  const shapes = doc.shapes.map((shape) => {
+    if (!ids.has(shape.id) || shape.color === target) return shape;
+    const { settings: dropped, ...rest } = shape;
+    void dropped;
+    return { ...rest, color: target };
+  });
   return { shapes, layers: syncLayers(shapes, doc.layers) };
+}
+
+/**
+ * Cut settings brought into the ranges a layer allows: speed 0.1–2000 mm/s,
+ * power 0–100 %, min power no higher than max, whole passes 1–100. A value
+ * that is not a finite number is replaced by the fallback's.
+ */
+export function clampCutSettings(settings: ShapeCutSettings, fallback: ShapeCutSettings): ShapeCutSettings {
+  const maxPowerPct = clamp(settings.maxPowerPct, 0, 100, fallback.maxPowerPct);
+  return {
+    speedMmS: clamp(settings.speedMmS, 0.1, 2000, fallback.speedMmS),
+    maxPowerPct,
+    minPowerPct: Math.min(maxPowerPct, clamp(settings.minPowerPct, 0, 100, fallback.minPowerPct)),
+    passes: Math.round(clamp(settings.passes, 1, 100, fallback.passes)),
+  };
+}
+
+/** How many shapes a layer has, and how many of them carry their own cut settings. */
+export interface LayerShapeCount {
+  readonly shapes: number;
+  readonly withSettings: number;
+}
+
+export function countLayerShapes(shapes: readonly Shape[]): Map<string, LayerShapeCount> {
+  const counts = new Map<string, { shapes: number; withSettings: number }>();
+  for (const shape of shapes) {
+    let entry = counts.get(shape.color);
+    if (!entry) {
+      entry = { shapes: 0, withSettings: 0 };
+      counts.set(shape.color, entry);
+    }
+    entry.shapes += 1;
+    if (shape.settings) entry.withSettings += 1;
+  }
+  return counts;
 }
 
 export type LayerPatch = Partial<Omit<Layer, 'color'>>;
@@ -137,15 +179,34 @@ export function updateLayer(doc: LaserDocument, color: string, patch: LayerPatch
   const layers = doc.layers.map((layer) => {
     if (layer.color !== color) return layer;
     const merged = { ...layer, ...patch };
-    const maxPowerPct = clamp(merged.maxPowerPct, 0, 100, layer.maxPowerPct);
     return {
       ...merged,
-      speedMmS: clamp(merged.speedMmS, 0.1, 2000, layer.speedMmS),
-      maxPowerPct,
-      minPowerPct: Math.min(maxPowerPct, clamp(merged.minPowerPct, 0, 100, layer.minPowerPct)),
-      passes: Math.round(clamp(merged.passes, 1, 100, layer.passes)),
+      ...clampCutSettings(merged, layer),
       kerfMm: clamp(merged.kerfMm, 0, 2, layer.kerfMm),
     };
   });
   return { shapes: doc.shapes, layers };
+}
+
+/** Settings to give one layer colour when shapes are added. */
+export interface LayerSetup {
+  readonly color: string;
+  readonly patch: LayerPatch;
+}
+
+/**
+ * Adds the shapes and, in the same step, sets the given layers' settings: a
+ * layer the shapes create starts from the defaults with the patch applied,
+ * one that already exists is updated. A setup for a colour that no shape
+ * uses changes nothing.
+ */
+export function addShapesWithLayers(
+  doc: LaserDocument,
+  shapes: readonly Shape[],
+  setups: readonly LayerSetup[],
+): LaserDocument {
+  let next = addShapes(doc, shapes);
+  if (next === doc) return doc;
+  for (const setup of setups) next = updateLayer(next, normalizeColor(setup.color), setup.patch);
+  return next;
 }

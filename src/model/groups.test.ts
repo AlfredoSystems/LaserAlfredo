@@ -276,3 +276,34 @@ describe('document edits keep the groups', () => {
     expect(existingScope(next.shapes, ['A', 'B'])).toEqual(['A', 'B']);
   });
 });
+
+describe('per-shape cut settings and groups', () => {
+  const settings = { speedMmS: 30, maxPowerPct: 40, minPowerPct: 40, passes: 1 };
+  const cell = (id: string, groups?: readonly string[]): Shape => ({
+    id,
+    color: '#a04000',
+    closed: true,
+    points: [
+      { x: 0, y: 0 },
+      { x: 10, y: 0 },
+      { x: 10, y: 10 },
+    ],
+    settings,
+    ...(groups ? { groups } : {}),
+  });
+
+  it('keeps them through grouping, ungrouping and fresh group ids', () => {
+    const doc = { shapes: [cell('a'), cell('b')], layers: [] };
+    const grouped = groupShapes(doc, new Set(['a', 'b']), TOP_LEVEL, 'g9');
+    expect(grouped.shapes.map((shape) => shape.groups)).toEqual([['g9'], ['g9']]);
+    expect(grouped.shapes.map((shape) => shape.settings)).toEqual([settings, settings]);
+    const ungrouped = ungroupShapes(grouped, new Set(['a', 'b']), TOP_LEVEL);
+    expect(ungrouped.shapes.map((shape) => shape.groups)).toEqual([undefined, undefined]);
+    expect(ungrouped.shapes.map((shape) => shape.settings)).toEqual([settings, settings]);
+    let n = 0;
+    const remapped = remapGroupIds(grouped.shapes, () => `n${++n}`);
+    expect(remapped.map((shape) => shape.groups)).toEqual([['n1'], ['n1']]);
+    expect(remapped.map((shape) => shape.settings)).toEqual([settings, settings]);
+    expect(withGroups(cell('c', ['g1']), []).settings).toBe(settings);
+  });
+});

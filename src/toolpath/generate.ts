@@ -2,7 +2,8 @@ import { boundsOfPolylines } from '../geometry/bounds';
 import { applyKerf } from '../geometry/kerf';
 import { cutLength, orderForCutting, travelLength } from '../geometry/order';
 import type { Bed } from '../model/bed';
-import type { LaserDocument, Point, Polyline } from '../model/types';
+import { clampCutSettings } from '../model/document';
+import type { LaserDocument, Point, Polyline, ShapeCutSettings } from '../model/types';
 import type { Job, JobLayer, JobPath } from './types';
 
 /** Where the head is assumed to be when a job starts. */
@@ -20,9 +21,30 @@ function exitPoint(path: JobPath): Point | undefined {
   return path.closed ? path.points[0] : path.points[path.points.length - 1];
 }
 
+/** The shapes of one layer that are cut with the same settings. */
+interface SettingsRun {
+  readonly settings: ShapeCutSettings;
+  readonly paths: Polyline[];
+}
+
+/** Gentlest first: least power, then fastest, then fewest passes. */
+function gentlerFirst(a: SettingsRun, b: SettingsRun): number {
+  return (
+    a.settings.maxPowerPct - b.settings.maxPowerPct ||
+    b.settings.speedMmS - a.settings.speedMmS ||
+    a.settings.passes - b.settings.passes ||
+    a.settings.minPowerPct - b.settings.minPowerPct
+  );
+}
+
 /**
  * Turns the document into a job: enabled line layers in panel order, kerf
  * applied per layer, inner contours before outer ones, then shortest travel.
+ *
+ * Shapes that carry their own cut settings are split off their layer: after
+ * the layer's ordinary cuts comes one job layer per distinct set of settings,
+ * gentlest first, each ordered by itself. They keep the layer's colour, kerf
+ * and enabled flag, so a job can have more layers than the document.
  */
 export function generateJob(doc: LaserDocument, start: Point = JOB_START): GeneratedJob {
   const warnings: string[] = [];
@@ -31,28 +53,49 @@ export function generateJob(doc: LaserDocument, start: Point = JOB_START): Gener
 
   for (const layer of doc.layers) {
     if (!layer.enabled) continue;
-    const shapes: Polyline[] = doc.shapes.filter((shape) => shape.color === layer.color && shape.points.length >= 2);
+    const shapes = doc.shapes.filter((shape) => shape.color === layer.color && shape.points.length >= 2);
     if (shapes.length === 0) continue;
     if (layer.mode === 'fill') {
       warnings.push(`Layer ${layer.color} is set to Fill, which is not supported yet; it was left out`);
       continue;
     }
+    // Kerf looks at the whole layer, so a hole stays a hole whatever its settings.
     const compensated = applyKerf(shapes, layer.kerfMm);
-    const paths: JobPath[] = orderForCutting(compensated, head)
-      // Drop specks shorter than a micrometre: the controller cannot represent them.
-      .filter((path) => path.points.length >= 2 && cutLength(path) > 0.001)
-      .map((path) => ({ points: path.points, closed: path.closed }));
-    if (paths.length === 0) continue;
-    const last = paths[paths.length - 1];
-    head = (last && exitPoint(last)) ?? head;
-    layers.push({
-      color: layer.color,
-      speedMmS: layer.speedMmS,
-      maxPowerPct: layer.maxPowerPct,
-      minPowerPct: layer.minPowerPct,
-      passes: layer.passes,
-      paths,
-    });
+    const ordinary: SettingsRun = { settings: layer, paths: [] };
+    const overridden = new Map<string, SettingsRun>();
+    for (const path of compensated) {
+      if (!path.settings) {
+        ordinary.paths.push(path);
+        continue;
+      }
+      const settings = clampCutSettings(path.settings, layer);
+      const key = `${settings.speedMmS}|${settings.maxPowerPct}|${settings.minPowerPct}|${settings.passes}`;
+      let run = overridden.get(key);
+      if (!run) {
+        run = { settings, paths: [] };
+        overridden.set(key, run);
+      }
+      run.paths.push(path);
+    }
+
+    for (const run of [ordinary, ...[...overridden.values()].sort(gentlerFirst)]) {
+      if (run.paths.length === 0) continue;
+      const paths: JobPath[] = orderForCutting(run.paths, head)
+        // Drop specks shorter than a micrometre: the controller cannot represent them.
+        .filter((path) => path.points.length >= 2 && cutLength(path) > 0.001)
+        .map((path) => ({ points: path.points, closed: path.closed }));
+      if (paths.length === 0) continue;
+      const last = paths[paths.length - 1];
+      head = (last && exitPoint(last)) ?? head;
+      layers.push({
+        color: layer.color,
+        speedMmS: run.settings.speedMmS,
+        maxPowerPct: run.settings.maxPowerPct,
+        minPowerPct: run.settings.minPowerPct,
+        passes: run.settings.passes,
+        paths,
+      });
+    }
   }
 
   return { job: { layers, bounds: boundsOfPolylines(layers.flatMap((layer) => layer.paths)) }, warnings };

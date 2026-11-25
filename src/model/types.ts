@@ -18,6 +18,17 @@ export interface ColoredPolyline extends Polyline {
   readonly color: string;
 }
 
+/**
+ * Cut settings a single shape carries instead of its layer's, as the cells of
+ * a material test do. Same units and ranges as the fields of `Layer`.
+ */
+export interface ShapeCutSettings {
+  readonly speedMmS: number;
+  readonly maxPowerPct: number;
+  readonly minPowerPct: number;
+  readonly passes: number;
+}
+
 /** A document shape: one contour on one layer. Points are in document mm. */
 export interface Shape extends ColoredPolyline {
   readonly id: string;
@@ -26,6 +37,12 @@ export interface Shape extends ColoredPolyline {
    * means ungrouped. See `groups.ts`.
    */
   readonly groups?: readonly string[];
+  /**
+   * Overrides the layer's speed, power and passes for this shape only. Absent
+   * means the layer's values apply. Dropped when the shape moves to another
+   * layer.
+   */
+  readonly settings?: ShapeCutSettings;
 }
 
 export type LayerMode = 'line' | 'fill';

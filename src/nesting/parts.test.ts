@@ -206,6 +206,24 @@ describe('sheetShapes', () => {
     expect(shapes[0]?.points[0]).toEqual({ x: 10, y: 20 });
   });
 
+  it('gives every copy the cut settings its source shape carries', () => {
+    const settings = { speedMmS: 30, maxPowerPct: 40, minPowerPct: 40, passes: 2 };
+    const own = [{ ...rect('cell', 0, 0, 10, 10, '#a04000'), settings }, rect('plain', 50, 0, 10, 10)];
+    const ownSources = partSources(findParts(own), own);
+    const sheet: NestSheet = {
+      usedLengthMm: 0,
+      placements: [
+        { partId: 'cell', copy: 0, rotationDeg: 0, dx: 0, dy: 0 },
+        { partId: 'cell', copy: 1, rotationDeg: 90, dx: 40, dy: 0 },
+        { partId: 'plain', copy: 0, rotationDeg: 0, dx: 0, dy: 30 },
+      ],
+    };
+    const placed = sheetShapes(sheet, ownSources, counter('n'), counter('g'));
+    expect(placed.map((shape) => shape.settings)).toEqual([settings, settings, undefined]);
+    expect('settings' in (placed[2] ?? {})).toBe(false);
+    expect(placed.map((shape) => shape.color)).toEqual(['#a04000', '#a04000', '#000000']);
+  });
+
   it('rotates about the origin before translating', () => {
     // 90° turns (x, y) into (-y, x) with Y down, so the 40 × 20 part at
     // (10, 20) lands on x -40…-20, y 10…50 before the shift.
